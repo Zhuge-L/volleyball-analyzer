@@ -134,6 +134,8 @@ function loadFile(file) {
   lastSampleT = -1;
   window.scrollTo({ top: 0, behavior: 'smooth' });
   ensureModel();
+  // 布局切换后下一帧再对齐一次 canvas
+  requestAnimationFrame(() => syncOverlaySize());
 }
 
 /* ============================================================
@@ -168,17 +170,30 @@ btnPlay.addEventListener('click', async () => {
   if (!landmarker) return;
   if (video.paused) video.play(); else video.pause();
 });
-video.addEventListener('play', () => { btnPlay.textContent = '⏸ 暂停'; scheduleNext(); });
+video.addEventListener('play', () => {
+  syncOverlaySize();
+  btnPlay.textContent = '⏸ 暂停';
+  scheduleNext();
+});
 video.addEventListener('pause', () => { btnPlay.textContent = '▶ 播放分析'; cancelAnimationFrame(rafId); });
 video.addEventListener('ended', () => { btnPlay.textContent = '▶ 重新播放'; buildReport(); });
 speedSel.addEventListener('change', () => (video.playbackRate = parseFloat(speedSel.value)));
 video.addEventListener('loadedmetadata', () => {
-  overlay.width = video.videoWidth;
-  overlay.height = video.videoHeight;
+  syncOverlaySize();
   updateTimeLabel();
 });
 video.addEventListener('timeupdate', updateTimeLabel);
 video.addEventListener('seeked', () => { if (video.paused) detectOnce(); });
+
+/** 让 canvas 像素尺寸与视频一致，CSS 尺寸与视频显示区域一致 */
+function syncOverlaySize() {
+  if (!video.videoWidth) return;
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  // 双保险：显式对齐到 video 当前渲染尺寸（竖屏视频尤其重要）
+  overlay.style.width = `${video.clientWidth}px`;
+  overlay.style.height = `${video.clientHeight}px`;
+}
 
 btnReset.addEventListener('click', () => {
   video.pause();
@@ -498,7 +513,11 @@ chartCanvas.addEventListener('click', (e) => {
   video.currentTime = ratio * video.duration;
 });
 
-window.addEventListener('resize', drawChart);
+window.addEventListener('resize', () => {
+  syncOverlaySize();
+  drawChart();
+  if (video.paused && landmarker) detectOnce();
+});
 
 /* ============================================================
  * 训练报告
