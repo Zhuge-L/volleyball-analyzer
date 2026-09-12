@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VolleySense · 排球垫球姿态智能分析</title>
+  <meta name="description" content="上传垫球视频，AI 实时识别膝关节、肘关节夹角与重心变化，对照训练标准即时提醒。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏐</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 背景装饰 -->
+  <div class="orbs" aria-hidden="true">
+    <span class="orb orb-a"></span>
+    <span class="orb orb-b"></span>
+    <span class="orb orb-c"></span>
+    <div class="grid-overlay"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-ball">🏐</span>
+      <span class="brand-name">Volley<em>Sense</em></span>
+    </div>
+    <nav class="topnav">
+      <button class="btn btn-ghost" id="btn-standards" type="button">评判标准</button>
+      <a class="btn btn-ghost" id="github-link" href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ 首屏：上传 ============ -->
+    <section class="hero" id="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">AI POSE ANALYSIS · 垫球专项</p>
+        <h1>上传一段垫球视频<br /><span class="grad-text">看清每一个关节角度</span></h1>
+        <p class="lede">
+          基于 MediaPipe 姿态识别，实时测算<b>膝关节夹角、肘关节夹角、躯干前倾角</b>与<b>重心下降幅度</b>，
+          对照训练标准即时提醒。全部计算在浏览器本地完成，视频不会上传到任何服务器。
+        </p>
+
+        <div class="upload-zone" id="drop-zone" role="button" tabindex="0" aria-label="上传视频">
+          <input type="file" id="file-input" accept="video/*" hidden />
+          <div class="upload-inner">
+            <div class="upload-icon">📤</div>
+            <p class="upload-title">点击选择，或把视频拖到这里</p>
+            <p class="upload-sub">支持 MP4 / MOV / WebM · 建议固定机位、全身入镜、先站直 1~2 秒再开始垫球</p>
+          </div>
+        </div>
+
+        <ul class="hero-points">
+          <li><b>33</b><span>个人体关键点</span></li>
+          <li><b>6</b><span>项专项指标</span></li>
+          <li><b>0</b><span>上传 · 纯本地运算</span></li>
+        </ul>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="ball">🏐</div>
+        <div class="ring ring-1"></div>
+        <div class="ring ring-2"></div>
+        <div class="orbit-tag tag-1">膝角 132°</div>
+        <div class="orbit-tag tag-2">肘角 174°</div>
+        <div class="orbit-tag tag-3">重心 ↓18%</div>
+      </div>
+    </section>
+
+    <!-- ============ 分析台 ============ -->
+    <section class="analyzer" id="analyzer" hidden>
+      <div class="stage-col">
+        <div class="stage-card">
+          <div class="stage-wrap" id="stage-wrap">
+            <video id="video" playsinline preload="auto"></video>
+            <canvas id="overlay"></canvas>
+            <div class="stage-loading" id="stage-loading" hidden>
+              <div class="spinner"></div>
+              <p id="loading-text">正在加载 AI 模型…</p>
+            </div>
+          </div>
+          <div class="controls">
+            <button class="btn btn-primary" id="btn-play" type="button">▶ 播放分析</button>
+            <button class="btn btn-ghost" id="btn-report" type="button">生成报告</button>
+            <select id="speed" class="select" title="播放速度">
+              <option value="1">1.0×</option>
+              <option value="0.5">0.5× 慢放</option>
+              <option value="0.25">0.25× 慢放</option>
+            </select>
+            <span class="time" id="time-label">00:00 / 00:00</span>
+            <button class="btn btn-ghost btn-new" id="btn-reset" type="button">↺ 重新上传</button>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="card-head">
+            <h3>角度 · 时间曲线</h3>
+            <div class="legend">
+              <span><i class="dot dot-knee"></i>膝角</span>
+              <span><i class="dot dot-elbow"></i>肘角</span>
+              <span><i class="dot dot-cog"></i>重心下降%</span>
+            </div>
+          </div>
+          <canvas id="chart" height="170"></canvas>
+          <p class="chart-hint">绿色色带 = 膝角理想区间（110°~150°）· 点击曲线可跳转画面</p>
+        </div>
+
+        <div class="report-card" id="report-card" hidden>
+          <div class="card-head"><h3>📋 本次训练报告</h3></div>
+          <div id="report-body"></div>
+        </div>
+      </div>
+
+      <aside class="dash-col" id="dash">
+        <!-- 指标卡片由 JS 根据评判标准自动生成 -->
+      </aside>
+    </section>
+  </main>
+
+  <!-- ============ 评判标准弹窗 ============ -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-mask" data-close></div>
+    <div class="modal-panel">
+      <div class="card-head">
+        <h3>垫球姿态评判标准</h3>
+        <button class="btn btn-ghost" type="button" data-close>✕</button>
+      </div>
+      <div id="standards-table"></div>
+      <p class="modal-note">以上为通用训练经验值，可在 <code>js/standards.js</code> 中按队伍要求自行调整。</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
