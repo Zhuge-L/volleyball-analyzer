@@ -120,6 +120,11 @@ $('#btn-hub').addEventListener('click', () => {
   showHub();
 });
 
+/* 项目页内的返回按钮（上传页 + 分析台各一个） */
+const backToHub = () => { leaveAnalyzer(); showHub(); };
+$('#btn-back-hub')?.addEventListener('click', backToHub);
+$('#btn-back-hub2')?.addEventListener('click', backToHub);
+
 function showHub() {
   hub.hidden = false;
   hero.hidden = true;
@@ -218,7 +223,7 @@ function renderArchive() {
       <span class="h-name">${esc(sk.examName)}</span>
       ${dateHtml}
       ${scoreHtml}
-      <button class="btn btn-ghost btn-sm btn-export-one" type="button" data-skill="${sk.id}" ${disabled}>🖨 导出 PDF</button>
+      <button class="btn btn-ghost btn-sm btn-export-one" type="button" data-skill="${sk.id}" ${disabled}>📄 导出 PDF</button>
     </li>`;
   }).join('');
 }
@@ -1164,9 +1169,9 @@ function buildReport() {
       <span class="trend-chips">${trend.map((s2, i) => `${i ? '<i>→</i>' : ''}<b class="${s2 >= 85 ? 'good' : s2 >= 70 ? '' : s2 >= 55 ? 'warn' : 'bad'}">${s2}</b>`).join('')}</span>
     </div>` : ''}
     <div class="report-actions">
-      <button class="btn btn-primary btn-sm" id="btn-export" type="button">🖨 导出本项目 PDF</button>
+      <button class="btn btn-primary btn-sm" id="btn-export" type="button">📄 导出本项目 PDF</button>
       <button class="btn btn-ghost btn-sm" id="btn-export-md" type="button">⬇ 导出 Markdown</button>
-      <button class="btn btn-ghost btn-sm" id="btn-export-all-inline" type="button">🖨 全部项目总报告 PDF</button>
+      <button class="btn btn-ghost btn-sm" id="btn-export-all-inline" type="button">📄 全部项目总报告 PDF</button>
     </div>
   `;
   reportCard.hidden = false;

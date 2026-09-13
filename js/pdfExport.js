@@ -108,7 +108,7 @@ function skillSectionHtml(r) {
 function wrapPrintDoc(title, inner) {
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" /><title>${esc(title)}</title>
 <style>${PRINT_CSS}</style></head><body>
-  <div class="print-tip">📄 已自动生成报告：在打印对话框中选择「另存为 PDF」→ 保存即可</div>
+  <div class="print-tip">📄 报告已生成：在弹出的对话框中选择「另存为 PDF」，点击「保存」即可</div>
   ${inner}
 </body></html>`;
 }

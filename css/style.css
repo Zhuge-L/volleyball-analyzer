@@ -150,8 +150,9 @@ body {
 .archive-list .h-score.none { color: var(--text-dim); font-weight: 500; font-size: 13px; }
 .archive-list .btn[disabled] { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-.camera-card, .notice-card {
-  max-width: 620px; margin: 0 0 16px;
+.btn-back { margin-bottom: 16px; }
+
+.camera-card, .notice-card {  max-width: 620px; margin: 0 0 16px;
   background: var(--panel); border: 1px solid var(--stroke);
   border-radius: var(--radius); padding: 16px 18px;
   font-size: 13.5px; line-height: 1.8; color: var(--text-dim);

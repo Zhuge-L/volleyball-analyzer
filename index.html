@@ -79,10 +79,10 @@
           <h3>📁 我的成绩档案 · 导出</h3>
           <span class="archive-actions">
             <button class="btn btn-ghost btn-sm" id="btn-export-all-md" type="button">⬇ 总报告 Markdown</button>
-            <button class="btn btn-primary btn-sm" id="btn-export-all" type="button">🖨 全部项目总报告 PDF</button>
+            <button class="btn btn-primary btn-sm" id="btn-export-all" type="button">📄 全部项目总报告 PDF</button>
           </span>
         </div>
-        <p class="archive-hint">每个项目可单独导出；全部项目可合并为一份总报告。PDF 通过浏览器打印窗口「另存为 PDF」生成；Markdown 可直接下载备份。以下为各项目<strong>最近一次</strong>已生成的报告。</p>
+        <p class="archive-hint">每个项目可单独导出；全部项目可合并为一份总报告。点击导出后会打开报告页，选择「另存为 PDF」即可保存；Markdown 可直接下载备份。以下为各项目<strong>最近一次</strong>已生成的报告。</p>
         <ul class="archive-list" id="archive-list"></ul>
       </div>
     </section>
@@ -90,6 +90,7 @@
     <!-- ============ 上传 ============ -->
     <section class="hero" id="hero" hidden>
       <div class="hero-copy">
+        <button class="btn btn-ghost btn-sm btn-back" id="btn-back-hub" type="button">← 返回项目选择</button>
         <p class="eyebrow" id="skill-eyebrow">考试项目</p>
         <h1 id="skill-title">上传考试视频</h1>
         <p class="lede" id="skill-blurb"></p>
@@ -153,6 +154,7 @@
             </select>
             <span class="time" id="time-label">00:00 / 00:00</span>
             <button class="btn btn-ghost btn-new" id="btn-reset" type="button">↺ 重新上传</button>
+            <button class="btn btn-ghost" id="btn-back-hub2" type="button">← 换项目</button>
           </div>
         </div>
 
