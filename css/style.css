@@ -64,10 +64,101 @@ body {
   background: rgba(7, 11, 22, 0.6);
   border-bottom: 1px solid var(--stroke);
 }
-.brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900; letter-spacing: 0.5px; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900; letter-spacing: 0.5px; flex-wrap: wrap; }
 .brand-ball { font-size: 26px; filter: drop-shadow(0 4px 10px rgba(255,255,255,0.25)); }
 .brand-name em { font-style: normal; background: linear-gradient(90deg, var(--accent1), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.topnav { display: flex; gap: 10px; }
+.brand-sub { font-size: 12px; font-weight: 500; color: var(--text-dim); padding: 4px 10px; border: 1px solid var(--stroke); border-radius: 999px; }
+.topnav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.user-chip {
+  font-size: 13px; color: var(--text-dim);
+  padding: 8px 12px; border: 1px solid var(--stroke); border-radius: 999px;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------- 登录 ---------- */
+.login-screen {
+  min-height: 100vh; display: grid; place-items: center;
+  padding: 40px 20px;
+}
+.login-card {
+  width: min(520px, 100%);
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: 24px; padding: 36px 32px 28px;
+  backdrop-filter: blur(18px); box-shadow: var(--shadow);
+}
+.login-crest {
+  font-size: 13px; letter-spacing: 3px; color: var(--accent2);
+  font-weight: 700; margin-bottom: 10px;
+}
+.login-card h1 { font-size: clamp(26px, 4vw, 34px); font-weight: 900; line-height: 1.3; }
+.login-lead { margin: 14px 0 22px; color: var(--text-dim); font-size: 14.5px; line-height: 1.85; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.btn-block { justify-content: center; width: 100%; padding: 12px 18px; font-size: 15px; }
+.remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.remember input { accent-color: var(--accent2); }
+.login-err { color: var(--bad); font-size: 13px; }
+.login-foot { margin-top: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+
+/* ---------- 项目选择 ---------- */
+.hub { max-width: 1100px; margin: 36px auto 0; }
+.hub-intro { max-width: 720px; margin-bottom: 28px; }
+.skill-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+.skill-card {
+  text-align: left; font-family: var(--font); color: var(--text);
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: 18px; padding: 20px 18px 16px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 6px;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.skill-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 212, 255, 0.45);
+  background: var(--panel-strong);
+}
+.skill-icon { font-size: 28px; }
+.skill-name { font-size: 20px; font-weight: 900; }
+.skill-exam { font-size: 12.5px; color: var(--accent2); font-weight: 700; }
+.skill-blurb { font-size: 13px; color: var(--text-dim); line-height: 1.65; margin-top: 4px; }
+.skill-cam { font-size: 12px; color: var(--warn); margin-top: 8px; }
+
+/* ---------- 成绩档案 / PDF 导出 ---------- */
+.archive-panel {
+  margin-top: 28px;
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: var(--radius); backdrop-filter: blur(16px);
+  padding-bottom: 14px; box-shadow: var(--shadow);
+}
+.archive-panel .card-head {
+  padding: 16px 18px 6px; gap: 12px; flex-wrap: wrap;
+}
+.archive-panel .card-head h3 { font-size: 15px; }
+.archive-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.archive-hint {
+  padding: 0 18px 10px; font-size: 13px; color: var(--text-dim); line-height: 1.7;
+}
+.archive-list { list-style: none; padding: 0 14px 6px; display: flex; flex-direction: column; gap: 8px; }
+.archive-list li {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: 13px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035); border: 1px solid transparent;
+}
+.archive-list li .skill-icon { font-size: 18px; }
+.archive-list .h-name { flex: 1; min-width: 120px; font-weight: 700; }
+.archive-list .h-score.none { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+.archive-list .btn[disabled] { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.camera-card, .notice-card {
+  max-width: 620px; margin: 0 0 16px;
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: var(--radius); padding: 16px 18px;
+  font-size: 13.5px; line-height: 1.8; color: var(--text-dim);
+}
+.camera-card h3 { font-size: 14px; color: var(--text); margin-bottom: 6px; }
+.camera-card b, .notice-card b { color: var(--text); }
+.notice-card { border-color: rgba(255, 176, 32, 0.35); }
 
 /* ---------- 按钮 ---------- */
 .btn {
@@ -315,10 +406,137 @@ main { padding: 0 clamp(20px, 5vw, 64px) 80px; }
 .modal-note { padding: 14px 22px 0; font-size: 12.5px; color: var(--text-dim); }
 .modal-note code { background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 6px; font-size: 12px; }
 
+/* ---------- 学员信息表单（选填） ---------- */
+.student-form {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  max-width: 620px; margin-bottom: 14px;
+}
+.field label {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 12.5px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500;
+}
+.field label .opt {
+  font-size: 11px; color: var(--accent2);
+  border: 1px solid rgba(0, 212, 255, 0.35); border-radius: 999px; padding: 1px 7px;
+}
+.field input {
+  width: 100%; font-family: var(--font); font-size: 14px; color: var(--text);
+  background: var(--panel); border: 1px solid var(--stroke); border-radius: 12px;
+  padding: 11px 14px; outline: none; transition: border-color 0.2s ease;
+}
+.field input:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12); }
+.field input::placeholder { color: rgba(147, 160, 189, 0.55); }
+
+/* ---------- 历史记录卡 ---------- */
+.history-card {
+  max-width: 620px; margin-top: 16px;
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: var(--radius); backdrop-filter: blur(16px);
+  padding-bottom: 10px;
+}
+.history-card .card-head { padding: 13px 16px 4px; }
+.history-card .card-head h3 { font-size: 13.5px; }
+.history-list { list-style: none; padding: 4px 16px 6px; display: flex; flex-direction: column; gap: 4px; }
+.history-list li {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px; padding: 7px 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.h-date { color: var(--text-dim); font-family: var(--font-num); font-size: 12px; }
+.h-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-score { font-family: var(--font-num); font-weight: 700; font-size: 15px; }
+.h-score.good { color: var(--good); } .h-score.warn { color: var(--warn); } .h-score.bad { color: var(--bad); }
+.btn-sm { padding: 6px 12px; font-size: 12.5px; border-radius: 10px; }
+
+/* ---------- 当前重点卡 ---------- */
+.focus-card {
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: var(--radius); backdrop-filter: blur(16px);
+  box-shadow: var(--shadow); padding: 14px 18px;
+  transition: border-color 0.3s ease;
+}
+.focus-card.lv-good { border-color: rgba(46, 230, 168, 0.5); }
+.focus-card.lv-warn { border-color: rgba(255, 176, 32, 0.55); }
+.focus-card.lv-bad { border-color: rgba(255, 84, 112, 0.6); }
+.focus-label { font-size: 12px; color: var(--text-dim); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+.focus-text { font-size: 14.5px; line-height: 1.65; }
+.focus-text b { font-family: var(--font-num); color: var(--accent2); }
+.focus-card.lv-bad .focus-text b { color: var(--bad); }
+.focus-card.lv-warn .focus-text b { color: var(--warn); }
+
+/* ---------- 仪表盘分组标题 ---------- */
+.dash-group {
+  font-size: 12px; color: var(--text-dim); font-weight: 700; letter-spacing: 2px;
+  padding: 2px 4px 0; margin-top: 2px;
+}
+
+/* ---------- 击球平台组合卡 ---------- */
+.platform-card .prow { margin-top: 12px; }
+.prow-head { display: flex; align-items: baseline; gap: 8px; }
+.pname { font-size: 12.5px; color: var(--text-dim); }
+.pval { font-family: var(--font-num); font-size: 19px; font-weight: 700; margin-left: auto; }
+.pval small { font-size: 12px; color: var(--text-dim); margin-left: 1px; }
+.lv-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; transform: translateY(-1px); }
+.lv-dot.good { background: var(--good); box-shadow: 0 0 8px rgba(46, 230, 168, 0.7); }
+.lv-dot.warn { background: var(--warn); box-shadow: 0 0 8px rgba(255, 176, 32, 0.7); }
+.lv-dot.bad { background: var(--bad); box-shadow: 0 0 8px rgba(255, 84, 112, 0.7); }
+.lv-dot.none { background: rgba(255, 255, 255, 0.18); }
+.platform-card .gauge { margin-top: 7px; }
+
+/* 低置信度数值标记 */
+.lowconf { opacity: 0.65; text-decoration: underline dashed rgba(255, 176, 32, 0.7) 1px; text-underline-offset: 4px; cursor: help; }
+
+/* ---------- 报告：署名 / 趋势 / 操作 ---------- */
+.report-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.meta-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--stroke);
+  border-radius: 999px; padding: 6px 12px;
+}
+.meta-input {
+  background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--font); font-size: 12.5px;
+  width: 110px; border-bottom: 1px dashed rgba(147, 160, 189, 0.4); padding: 1px 0;
+}
+.meta-input:focus { border-bottom-color: var(--accent2); }
+.meta-input::placeholder { color: rgba(147, 160, 189, 0.55); }
+.report-trend {
+  margin-top: 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  font-size: 13px; color: var(--text-dim);
+}
+.trend-chips { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-num); }
+.trend-chips i { color: var(--text-dim); font-style: normal; font-size: 11px; }
+.trend-chips b {
+  min-width: 34px; text-align: center; padding: 4px 8px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06); font-size: 14px;
+}
+.trend-chips b.good { color: var(--good); } .trend-chips b.warn { color: var(--warn); } .trend-chips b.bad { color: var(--bad); }
+.report-actions { margin-top: 16px; display: flex; gap: 10px; }
+
+/* 触球时刻图例 */
+.dot-contact { background: #ffd166; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 1024px) {
   .hero { grid-template-columns: 1fr; min-height: auto; padding-top: 48px; }
   .hero-visual { display: none; }
   .analyzer { grid-template-columns: 1fr; }
   .dash-col { position: static; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .dash-group { grid-column: 1 / -1; }
+  .focus-card { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  main { padding: 0 14px 60px; }
+  .student-form { grid-template-columns: 1fr; }
+  .hero-points { gap: 22px; }
+  .dash-col { grid-template-columns: 1fr; }
+  .stage-frame video { max-height: 52vh; }
+  .controls { gap: 8px; }
+  .btn { padding: 9px 14px; font-size: 13px; }
+  .report-score { gap: 12px; }
+  .score-num { font-size: 38px; }
+  .brand-sub { display: none; }
+  .login-card { padding: 28px 20px 22px; }
 }

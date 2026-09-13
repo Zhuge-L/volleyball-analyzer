@@ -34,3 +34,15 @@ export function trunkLean(shoulderMid, hipMid) {
 export function visible(lm, indices, threshold = 0.4) {
   return indices.every((i) => (lm[i].visibility ?? 1) >= threshold);
 }
+
+/**
+ * 前臂倾角：肘→腕连线低于水平面的角度（度）
+ * 0 = 水平（平台朝前，球易前冲），90 = 竖直向下；垫球理想约 25°~45°
+ */
+export function forearmTilt(elbow, wrist) {
+  if (!elbow || !wrist) return null;
+  const dx = Math.abs(wrist.x - elbow.x);
+  const dy = wrist.y - elbow.y; // 图像 y 轴向下，手腕低于肘为正
+  if (dy <= 0) return 0; // 手腕高于肘（如举臂），倾角记 0
+  return Math.round((Math.atan2(dy, Math.max(dx, 1e-6)) * 180) / Math.PI);
+}

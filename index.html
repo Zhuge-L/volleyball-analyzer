@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VolleySense · 排球垫球姿态智能分析</title>
-  <meta name="description" content="上传垫球视频，AI 实时识别膝关节、肘关节夹角与重心变化，对照训练标准即时提醒。" />
+  <title>VolleySense · 北京大学排球课程智能分析</title>
+  <meta name="description" content="北京大学公共体育排球课程考试视频分析：垫球、传球、下手发球、上手发球、扣球。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏐</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,6 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <!-- 背景装饰 -->
   <div class="orbs" aria-hidden="true">
     <span class="orb orb-a"></span>
     <span class="orb orb-b"></span>
@@ -20,51 +19,113 @@
     <div class="grid-overlay"></div>
   </div>
 
-  <header class="topbar">
+  <!-- ============ 登录 ============ -->
+  <section class="login-screen" id="login-screen">
+    <div class="login-card">
+      <p class="login-crest">北京大学 · 公共体育</p>
+      <h1>排球课程智能分析</h1>
+      <p class="login-lead">
+        本程序专门为北京大学排球课程研发，用于课堂与课后的考试视频自评：对照垫球、传球、发球、扣球的技术要点，给出可执行的纠正建议。全部计算在浏览器本地完成，视频不会上传到任何服务器。
+      </p>
+      <form id="login-form" class="login-form" autocomplete="on">
+        <div class="field">
+          <label for="login-name">姓名</label>
+          <input id="login-name" name="name" type="text" required placeholder="请输入真实姓名" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="login-sid">学号</label>
+          <input id="login-sid" name="sid" type="text" required placeholder="请输入学号" inputmode="numeric" autocomplete="username" />
+        </div>
+        <label class="remember">
+          <input type="checkbox" id="login-remember" checked />
+          在本机记住登录（仅保存在浏览器本地）
+        </label>
+        <p class="login-err" id="login-err" hidden>请填写姓名和学号后再进入。</p>
+        <button class="btn btn-primary btn-block" type="submit">进入课堂</button>
+      </form>
+      <p class="login-foot">不追踪排球本身 · 评分基于人体姿态关键帧 · 可课后练习、课上提交报告</p>
+    </div>
+  </section>
+
+  <header class="topbar" id="topbar" hidden>
     <div class="brand">
       <span class="brand-ball">🏐</span>
       <span class="brand-name">Volley<em>Sense</em></span>
+      <span class="brand-sub">北京大学排球课程</span>
     </div>
     <nav class="topnav">
+      <span class="user-chip" id="user-chip"></span>
+      <button class="btn btn-ghost" id="btn-hub" type="button">考试项目</button>
       <button class="btn btn-ghost" id="btn-standards" type="button">评判标准</button>
-      <a class="btn btn-ghost" id="github-link" href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+      <button class="btn btn-ghost" id="btn-logout" type="button">退出</button>
     </nav>
   </header>
 
-  <main>
-    <!-- ============ 首屏：上传 ============ -->
-    <section class="hero" id="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">AI POSE ANALYSIS · 垫球专项</p>
-        <h1>上传一段垫球视频<br /><span class="grad-text">看清每一个关节角度</span></h1>
+  <main id="app-main" hidden>
+    <!-- ============ 项目选择 ============ -->
+    <section class="hub" id="hub">
+      <div class="hub-intro">
+        <p class="eyebrow">PEKING UNIVERSITY · VOLLEYBALL</p>
+        <h1>选择一项考试技术<br /><span class="grad-text">上传视频，对照标准自评</span></h1>
         <p class="lede">
-          基于 MediaPipe 姿态识别，实时测算<b>膝关节夹角、肘关节夹角、躯干前倾角</b>与<b>重心下降幅度</b>，
-          对照训练标准即时提醒。全部计算在浏览器本地完成，视频不会上传到任何服务器。
+          面向北京大学排球课程的「教、学、练、评」闭环：学生可在课后用手机拍摄考试动作，系统按项目给出关键帧评分与改进建议，报告可导出交给任课教师。
+          <b>系统不识别排球</b>，只分析人体姿态；请按右侧建议的机位拍摄，评分才可靠。
         </p>
+      </div>
+      <div class="skill-grid" id="skill-grid"></div>
+
+      <div class="archive-panel" id="archive-panel">
+        <div class="card-head">
+          <h3>📁 我的成绩档案 · 导出</h3>
+          <span class="archive-actions">
+            <button class="btn btn-ghost btn-sm" id="btn-export-all-md" type="button">⬇ 总报告 Markdown</button>
+            <button class="btn btn-primary btn-sm" id="btn-export-all" type="button">🖨 全部项目总报告 PDF</button>
+          </span>
+        </div>
+        <p class="archive-hint">每个项目可单独导出；全部项目可合并为一份总报告。PDF 通过浏览器打印窗口「另存为 PDF」生成；Markdown 可直接下载备份。以下为各项目<strong>最近一次</strong>已生成的报告。</p>
+        <ul class="archive-list" id="archive-list"></ul>
+      </div>
+    </section>
+
+    <!-- ============ 上传 ============ -->
+    <section class="hero" id="hero" hidden>
+      <div class="hero-copy">
+        <p class="eyebrow" id="skill-eyebrow">考试项目</p>
+        <h1 id="skill-title">上传考试视频</h1>
+        <p class="lede" id="skill-blurb"></p>
+
+        <div class="camera-card" id="camera-card"></div>
 
         <div class="upload-zone" id="drop-zone" role="button" tabindex="0" aria-label="上传视频">
           <input type="file" id="file-input" accept="video/*" hidden />
           <div class="upload-inner">
             <div class="upload-icon">📤</div>
             <p class="upload-title">点击选择，或把视频拖到这里</p>
-            <p class="upload-sub">支持 MP4 / MOV / WebM · 建议固定机位、全身入镜、先站直 1~2 秒再开始垫球</p>
+            <p class="upload-sub">支持 MP4 / MOV / WebM · 固定机位、全身入镜、先站直 1～2 秒再做动作</p>
           </div>
         </div>
 
-        <ul class="hero-points">
-          <li><b>33</b><span>个人体关键点</span></li>
-          <li><b>6</b><span>项专项指标</span></li>
-          <li><b>0</b><span>上传 · 纯本地运算</span></li>
-        </ul>
+        <div class="notice-card">
+          <b>关于「球」：本系统不检测排球。</b>
+          画面上的动作标记来自手臂/身体的运动学峰值，用来近似击球相位。没有球的空挥也可能被标出，不能理解为「识别到了球」。
+        </div>
+
+        <div class="history-card" id="history-card" hidden>
+          <div class="card-head">
+            <h3>📈 最近训练记录</h3>
+            <button class="btn btn-ghost btn-sm" id="btn-clear-history" type="button">清除</button>
+          </div>
+          <ul class="history-list" id="history-list"></ul>
+        </div>
       </div>
 
       <div class="hero-visual" aria-hidden="true">
         <div class="ball">🏐</div>
         <div class="ring ring-1"></div>
         <div class="ring ring-2"></div>
-        <div class="orbit-tag tag-1">膝角 132°</div>
-        <div class="orbit-tag tag-2">肘角 174°</div>
-        <div class="orbit-tag tag-3">重心 ↓18%</div>
+        <div class="orbit-tag tag-1">斜侧面 35°</div>
+        <div class="orbit-tag tag-2">全身入镜</div>
+        <div class="orbit-tag tag-3">先站直 2 秒</div>
       </div>
     </section>
 
@@ -95,41 +156,42 @@
           </div>
         </div>
 
+        <div class="report-card" id="report-card" hidden>
+          <div class="card-head"><h3>📋 本次训练报告</h3></div>
+          <div id="report-body"></div>
+        </div>
+
         <div class="chart-card">
           <div class="card-head">
             <h3>角度 · 时间曲线</h3>
             <div class="legend">
               <span><i class="dot dot-knee"></i>膝角</span>
-              <span><i class="dot dot-elbow"></i>肘角</span>
-              <span><i class="dot dot-cog"></i>重心下降%</span>
+              <span><i class="dot dot-elbow"></i>上肢</span>
+              <span><i class="dot dot-cog"></i>髋部/腾空</span>
+              <span><i class="dot dot-contact"></i>击球动作</span>
             </div>
           </div>
           <canvas id="chart" height="170"></canvas>
-          <p class="chart-hint">绿色色带 = 膝角理想区间（110°~150°）· 点击曲线可跳转画面</p>
-        </div>
-
-        <div class="report-card" id="report-card" hidden>
-          <div class="card-head"><h3>📋 本次训练报告</h3></div>
-          <div id="report-body"></div>
+          <p class="chart-hint" id="chart-hint">▲ = 由人体动作推算的击球相位（不是球体检测）· 点击曲线可跳转画面</p>
         </div>
       </div>
 
-      <aside class="dash-col" id="dash">
-        <!-- 指标卡片由 JS 根据评判标准自动生成 -->
-      </aside>
+      <aside class="dash-col" id="dash"></aside>
     </section>
   </main>
 
-  <!-- ============ 评判标准弹窗 ============ -->
   <div class="modal" id="modal" hidden>
     <div class="modal-mask" data-close></div>
     <div class="modal-panel">
       <div class="card-head">
-        <h3>垫球姿态评判标准</h3>
+        <h3 id="std-title">姿态评判标准</h3>
         <button class="btn btn-ghost" type="button" data-close>✕</button>
       </div>
       <div id="standards-table"></div>
-      <p class="modal-note">以上为通用训练经验值，可在 <code>js/standards.js</code> 中按队伍要求自行调整。</p>
+      <p class="modal-note">
+        以上为北京大学排球课程教学中的通用经验区间，可在 <code>js/skills.js</code> 按课堂要求调整。
+        评分只作用于由人体动作推算的击球相位关键帧；<b>不检测排球</b>。低置信度帧会自动降权。
+      </p>
     </div>
   </div>
 
