@@ -88,7 +88,7 @@ function skillSectionHtml(r) {
       <div class="meta">
         <span>时间：${esc(r.dateStr || '—')}</span>
         <span>视频时长：${esc(r.duration || '—')}</span>
-        <span>击球动作相位：${esc(r.contacts ?? '—')} 次（人体推算）</span>
+        <span>触球窗口：${esc(r.contacts ?? '—')} 次</span>
       </div>
       <div class="score-box">
         <div class="score-num">${esc(r.score)}</div>
@@ -126,7 +126,7 @@ function buildSingleDoc(r) {
     <span>导出时间：${esc(r.dateStr || '')}</span>
   </div>
   ${skillSectionHtml(r)}
-  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分基于人体姿态关键帧，不检测排球本身。</div>`);
+  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分作用于触球窗口或扣球腾空窗口；发球/垫球/传球优先使用球体检测。</div>`);
 }
 
 function buildCombinedDoc(student, reports, summaryRows) {
@@ -141,7 +141,7 @@ function buildCombinedDoc(student, reports, summaryRows) {
   <div class="cover">
     <div class="crest">北京大学 · 公共体育 · 排球课程</div>
     <h1>考试技术总报告</h1>
-    <div class="sub">垫球 · 传球 · 下手发球 · 上手发球 · 扣球</div>
+    <div class="sub">垫球（自垫/抛–垫）· 正面双手传球（自传/抛–传）· 上手发球 · 正面下手发球 · 扣球</div>
   </div>
   <div class="meta">
     <span>姓名：${esc(student.name || '（未填写）')}</span>
@@ -172,7 +172,7 @@ function buildCombinedDoc(student, reports, summaryRows) {
   </section>
   <h2>分项明细</h2>
   ${reports.filter(Boolean).map((r) => skillSectionHtml(r)).join('') || '<p class="missing">暂无已保存的项目报告。</p>'}
-  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分基于人体姿态关键帧，不检测排球本身。</div>`);
+  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分作用于触球窗口或扣球腾空窗口；发球/垫球/传球优先使用球体检测。</div>`);
 }
 
 /* ---------------- Markdown 组装 ---------------- */
@@ -184,7 +184,7 @@ function reportToMd(r) {
     `- 课程：北京大学排球课程`,
     `- 姓名：${r.name || '（未填写）'}　学号：${r.sid || '（未填写）'}`,
     `- 时间：${r.dateStr || '—'}`,
-    `- 视频时长：${r.duration || '—'}　击球动作相位：${r.contacts ?? '—'} 次（人体推算，非球体检测）`,
+    `- 视频时长：${r.duration || '—'}　触球窗口：${r.contacts ?? '—'} 次`,
     `- 评分方式：${r.modeNote || '—'}`,
     '',
     `## 综合评分：${r.score} 分（${r.gradeText || ''}）`,

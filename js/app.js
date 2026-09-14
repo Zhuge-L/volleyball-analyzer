@@ -1,13 +1,18 @@
 /* ============================================================
  * VolleySense · 北京大学排球课程
- * 登录 → 选择考试项目 → 上传视频 → 姿态分析 → 报告
+ * 登录 → 选择考试项目 → 上传视频 → 姿态+球体分析 → 报告
  *
- * 不追踪排球。击球相位由人体关键点运动学推算。
+ * 触球窗口优先用球体接近击球部位判定；扣球只评腾空挥臂。
  * ============================================================ */
 
-import { createPoseEngine, BONES, ANGLE_JOINTS } from './poseEngine.js';
-import { SKILL_LIST, getSkill } from './skills.js';
+import { createVisionEngines, BONES, ANGLE_JOINTS } from './poseEngine.js';
+import { SKILL_LIST, SKILL_GROUPS, getSkill } from './skills.js';
+import { citeList } from './refs.js';
 import { angleABC, mid, trunkLean, visible, forearmTilt } from './angles.js';
+import {
+  pickBallFromDetections, detectBallByColor, smoothBall, resetBallTrack,
+  ballHitDistance, ballOutsideBody,
+} from './ballDetect.js';
 import { exportSingleReportPdf, exportCombinedReportPdf, exportSingleReportMd, exportCombinedReportMd } from './pdfExport.js';
 
 const $ = (s) => document.querySelector(s);
@@ -42,6 +47,7 @@ const historyCard = $('#history-card');
 const historyList = $('#history-list');
 
 let landmarker = null;
+let ballDetector = null;
 let videoURL = null;
 let history = [];
 let contactEvents = [];
@@ -56,7 +62,9 @@ let rafId = 0;
 let savedHistoryLen = 0;
 let lastReport = null;
 let student = { name: '', sid: '' };
-let skill = getSkill('bump');
+let skill = getSkill('tossBump');
+let currentBall = null;
+let ballSeen = 0;
 const usingRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
 
 const LEVEL_COLOR = { good: '#2ee6a8', warn: '#ffb020', bad: '#ff5470', none: '#93a0bd' };
@@ -106,6 +114,10 @@ $('#login-form').addEventListener('submit', (e) => {
   applySession(rec);
 });
 
+$('#btn-send-teacher-hub')?.addEventListener('click', () => {
+  toast('教师端对接即将开通。当前请先导出 PDF / Markdown，再自行提交给任课教师。');
+});
+
 $('#btn-logout').addEventListener('click', () => {
   try { localStorage.removeItem(LS_SESSION); } catch { /* ignore */ }
   student = { name: '', sid: '' };
@@ -149,19 +161,53 @@ function leaveAnalyzer() {
  * 考试项目
  * ============================================================ */
 (function buildSkillGrid() {
-  $('#skill-grid').innerHTML = SKILL_LIST.map((s) => `
-    <button class="skill-card" type="button" data-skill="${s.id}">
-      <span class="skill-icon">${s.icon}</span>
-      <span class="skill-name">${s.name}</span>
-      <span class="skill-exam">${s.examName}</span>
-      <span class="skill-blurb">${s.blurb}</span>
-      <span class="skill-cam">📷 ${s.camera.best}</span>
-    </button>`).join('');
+  $('#skill-grid').innerHTML = SKILL_GROUPS.map((g) => {
+    if (g.skillId) {
+      return `<button class="skill-card" type="button" data-skill="${g.skillId}">
+        <span class="skill-icon">${g.icon}</span>
+        <span class="skill-name">${g.name}</span>
+        <span class="skill-exam">${g.examName}</span>
+        <span class="skill-blurb">${g.blurb}</span>
+        <span class="skill-cam">📷 ${g.camera}</span>
+      </button>`;
+    }
+    return `<article class="skill-card split">
+      <div class="skill-head">
+        <span class="skill-icon">${g.icon}</span>
+        <span class="skill-name">${g.name}</span>
+        <span class="skill-exam">${g.examName}</span>
+        <span class="skill-blurb">${g.blurb}</span>
+        <span class="skill-cam">📷 ${g.camera}</span>
+      </div>
+      <div class="skill-split">
+        ${g.variants.map((v, i) => `
+          <button type="button" data-skill="${v.id}" class="${i === 1 ? 'exam-slot' : 'drill-slot'}">
+            <span class="skill-tag ${v.tag.includes('考试') || v.tag === '上手' || v.tag === '正面下手' ? 'exam' : 'drill'}">${v.tag}</span>
+            <strong>${v.title}</strong>
+            <small>${v.desc}</small>
+          </button>`).join('')}
+      </div>
+    </article>`;
+  }).join('');
   $('#skill-grid').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-skill]');
     if (btn) selectSkill(btn.dataset.skill);
   });
 })();
+
+function toast(msg) {
+  let el = $('#toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 3200);
+}
 
 function selectSkill(id) {
   skill = getSkill(id);
@@ -170,15 +216,23 @@ function selectSkill(id) {
   $('#skill-eyebrow').textContent = `考试项目 · ${skill.examName}`;
   $('#skill-title').innerHTML = `上传「${skill.name}」视频<br /><span class="grad-text">对照课堂标准自评</span>`;
   $('#skill-blurb').textContent = skill.blurb;
+  const cam = skill.camera;
   $('#camera-card').innerHTML = `
-    <h3>建议拍摄角度</h3>
-    <p><b>最佳机位：</b>${skill.camera.best}</p>
-    <p>${skill.camera.also}</p>
-    <p><b>取景：</b>${skill.camera.framing}</p>
-    <p><b>避免：</b>${skill.camera.avoid}</p>`;
-  $('#chart-hint').textContent = '绿色色带 = 膝角参考区间 · ▲ = 击球动作相位（由人体动作推算，不是球体检测）· 点击跳转';
+    <h3>拍摄机位（请按此取景，否则角度误差会明显变大）</h3>
+    <div class="cam-specs">
+      <div><em>角度</em><b>${esc(cam.angle)}</b></div>
+      <div><em>距离</em><b>${esc(cam.distance)}</b></div>
+      <div><em>镜头离地</em><b>${esc(cam.height)}</b></div>
+      <div><em>帧率</em><b>${esc(cam.fps)}</b></div>
+    </div>
+    <p><b>最佳机位：</b>${esc(cam.best)}</p>
+    <p>${esc(cam.also)}</p>
+    <p><b>取景：</b>${esc(cam.framing)}</p>
+    <p><b>避免：</b>${esc(cam.avoid)}</p>
+    <p class="cam-cite">${esc(cam.cite)}</p>`;
+  $('#chart-hint').textContent = '绿色色带 = 膝角参考区间 · ▲ = 触球窗口（优先球体靠近击球部位；未检出球则回退人体相位）· 点击跳转';
   $('#std-title').textContent = `${skill.examName} · 评判标准`;
-  buildStandardsTable();
+  buildStandardsTable(skill.id);
   buildDashboard();
   hub.hidden = true;
   hero.hidden = false;
@@ -202,8 +256,10 @@ function saveSession(rec) {
 
 /** 当前学员某项目最近一次带完整报告快照的记录 */
 function latestReportFor(skillId, name = student.name) {
+  const aliases = { tossBump: ['tossBump', 'bump'], tossSet: ['tossSet', 'set'] };
+  const ids = aliases[skillId] || [skillId];
   const list = loadSessions()
-    .filter((s) => s.name === name && s.skill === skillId && s.report)
+    .filter((s) => s.name === name && ids.includes(s.skill) && s.report)
     .sort((a, b) => (b.id || 0) - (a.id || 0));
   return list[0] || null;
 }
@@ -220,7 +276,7 @@ function renderArchive() {
     const disabled = r ? '' : 'disabled';
     return `<li data-skill="${sk.id}">
       <span class="skill-icon">${sk.icon}</span>
-      <span class="h-name">${esc(sk.examName)}</span>
+      <span class="h-name">${esc(sk.name)}</span>
       ${dateHtml}
       ${scoreHtml}
       <button class="btn btn-ghost btn-sm btn-export-one" type="button" data-skill="${sk.id}" ${disabled}>📄 导出 PDF</button>
@@ -232,7 +288,7 @@ $('#archive-list')?.addEventListener('click', (e) => {
   const btn = e.target.closest('.btn-export-one');
   if (!btn || btn.disabled) return;
   const rec = latestReportFor(btn.dataset.skill);
-  if (!rec || !rec.report) { alert('该项目还没有可导出的报告'); return; }
+  if (!rec || !rec.report) { toast('该项目还没有可导出的报告'); return; }
   // 同步打开打印窗口（异步会被浏览器拦截）
   exportSingleReportPdf(rec.report);
 });
@@ -260,7 +316,7 @@ function collectAllReports() {
 $('#btn-export-all')?.addEventListener('click', () => {
   const { reports, summaryRows } = collectAllReports();
   if (!reports.length) {
-    alert('还没有任何项目报告。请先完成至少一项分析并生成报告。');
+    toast('还没有任何项目报告。请先完成至少一项分析并生成报告。');
     return;
   }
   exportCombinedReportPdf(student, reports, summaryRows);
@@ -269,7 +325,7 @@ $('#btn-export-all')?.addEventListener('click', () => {
 $('#btn-export-all-md')?.addEventListener('click', () => {
   const { reports, summaryRows } = collectAllReports();
   if (!reports.length) {
-    alert('还没有任何项目报告。请先完成至少一项分析并生成报告。');
+    toast('还没有任何项目报告。请先完成至少一项分析并生成报告。');
     return;
   }
   exportCombinedReportMd(student, reports, summaryRows);
@@ -384,23 +440,53 @@ function buildDashboard() {
   dash.appendChild(tips);
 }
 
-function buildStandardsTable() {
-  const rows = skill.standards.map((d) => `
+function buildStandardsTable(activeId = skill.id) {
+  const current = getSkill(activeId);
+  const tabs = SKILL_LIST.map((s) =>
+    `<button type="button" class="std-tab ${s.id === current.id ? 'on' : ''}" data-std="${s.id}">${s.name}</button>`
+  ).join('');
+  const rows = current.standards.map((d) => `
     <tr>
       <td><b>${d.name}</b></td>
       <td class="tag-good">${d.good}</td>
       <td class="tag-warn">${d.warn}</td>
       <td class="tag-bad">${d.bad}</td>
     </tr>
-    <tr><td colspan="4" style="color:var(--text-dim);font-size:12.5px;padding-top:0;border-bottom:1px solid var(--stroke)">${d.note}</td></tr>`).join('');
+    <tr><td colspan="4" class="std-note">${d.note}</td></tr>`).join('');
+  const refHtml = citeList(current.refs || []).map((r) =>
+    `<li>${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.tag}</a>` : r.tag} ${esc(r.title)}${r.note ? ` — ${esc(r.note)}` : ''}</li>`
+  ).join('');
+  const cam = current.camera;
   $('#standards-table').innerHTML = `
+    <div class="std-tabs">${tabs}</div>
+    <p class="std-lead">${esc(current.examName)} · ${esc(current.blurb)}</p>
+    <div class="cam-specs cam-specs-modal">
+      <div><em>角度</em><b>${esc(cam.angle)}</b></div>
+      <div><em>距离</em><b>${esc(cam.distance)}</b></div>
+      <div><em>镜头离地</em><b>${esc(cam.height)}</b></div>
+      <div><em>帧率</em><b>${esc(cam.fps)}</b></div>
+    </div>
     <table class="std-table">
       <thead><tr><th>指标</th><th>✅ 理想</th><th>⚠️ 可接受</th><th>⛔ 需纠正</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table>
+    <h4 class="ref-h">参考文献</h4>
+    <ul class="ref-list">${refHtml || '<li>见课程教学口径</li>'}</ul>
+    <p class="std-bound">能力边界：不评判肩内旋/外旋与绝对球速（单目 2D 不可靠）。肘角仅作粗粒度判断。文献精英数值为上限参考，公体课采用教学可执行区间。</p>`;
+  $('#std-title').textContent = `${current.examName} · 评判标准`;
 }
 
-$('#btn-standards').addEventListener('click', () => (modal.hidden = false));
+buildStandardsTable('tossBump');
+
+$('#standards-table')?.addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-std]');
+  if (tab) buildStandardsTable(tab.dataset.std);
+});
+
+$('#btn-standards').addEventListener('click', () => {
+  buildStandardsTable(skill.id);
+  modal.hidden = false;
+});
 modal.addEventListener('click', (e) => { if (e.target.hasAttribute('data-close')) modal.hidden = true; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.hidden = true; });
 
@@ -430,10 +516,13 @@ function resetAnalysisState() {
   lastSampleT = -1;
   savedHistoryLen = 0;
   lastReport = null;
+  currentBall = null;
+  ballSeen = 0;
+  resetBallTrack();
 }
 
 function loadFile(file) {
-  if (!file.type.startsWith('video/')) { alert('请选择视频文件'); return; }
+  if (!file.type.startsWith('video/')) { toast('请选择视频文件'); return; }
   if (videoURL) URL.revokeObjectURL(videoURL);
   videoURL = URL.createObjectURL(file);
   video.src = videoURL;
@@ -451,12 +540,13 @@ function ensureModel() {
   if (landmarker) return Promise.resolve();
   if (modelPromise) return modelPromise;
   stageLoading.hidden = false;
-  loadingText.textContent = '正在下载 AI 模型（首次约 10MB，请稍候）…';
-  modelPromise = createPoseEngine()
-    .then((lm) => {
-      landmarker = lm;
+  loadingText.textContent = '正在下载姿态与球体模型（首次约 15MB）…';
+  modelPromise = createVisionEngines((msg) => { loadingText.textContent = msg; })
+    .then(({ pose, ballDetector: det }) => {
+      landmarker = pose;
+      ballDetector = det;
       stageLoading.hidden = true;
-      loadingText.textContent = '模型就绪';
+      loadingText.textContent = ballDetector ? '姿态 + 球体模型就绪' : '姿态就绪（球体将用颜色回退）';
       detectOnce();
     })
     .catch((err) => {
@@ -518,13 +608,32 @@ function detectOnce() {
   runDetection();
 }
 function runDetection() {
-  const result = landmarker.detectForVideo(video, performance.now());
+  const ts = performance.now();
+  const result = landmarker.detectForVideo(video, ts);
   const lm = result.landmarks && result.landmarks[0];
+  currentBall = detectBall(ts);
   const metrics = computeMetrics(lm);
   phase = metrics ? classifyPhase(metrics) : 'none';
   drawOverlay(lm, metrics);
   updateDashboard(metrics);
   sampleHistory(metrics);
+}
+
+function detectBall(ts) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  let hit = null;
+  if (ballDetector) {
+    try {
+      const det = ballDetector.detectForVideo(video, ts);
+      hit = pickBallFromDetections(det.detections, vw, vh);
+    } catch (e) {
+      /* ignore frame errors */
+    }
+  }
+  if (!hit) hit = detectBallByColor(video);
+  const smoothed = smoothBall(hit, 0.08);
+  if (smoothed && !smoothed.stale) ballSeen += 1;
+  return smoothed;
 }
 
 /* ============================================================
@@ -589,6 +698,7 @@ function computeMetrics(lm) {
     if (hipStandY > 0.05) {
       m.jumpRise = Math.max(0, Math.round(((hipStandY - hip.y) / hipStandY) * 100));
       m.conf.jumpRise = minVis(23, 24);
+      m.airborne = m.jumpRise >= (skill.phase.airMin || 3);
     }
   }
 
@@ -596,8 +706,11 @@ function computeMetrics(lm) {
   if (wrists.length && visible(lm, [11, 12], 0.3)) {
     const wy = wrists.reduce((s, p) => s + p.y, 0) / wrists.length;
     const sh = mid(lm[11], lm[12]);
+    const noseY = lm[0] ? lm[0].y : sh.y - 0.12;
     m.wristHigh = Math.round((sh.y - wy) * 100);
     m.conf.wristHigh = Math.min(...wrists.map((p) => p.visibility ?? 1), minVis(11, 12));
+    m.aboveHead = wy < noseY;
+    m.aboveBrow = wy < noseY + 0.05;
   }
   if (visible(lm, [15, 16], 0.35)) {
     m.handsGap = Math.round(Math.hypot(lm[15].x - lm[16].x, lm[15].y - lm[16].y) * 100);
@@ -605,6 +718,13 @@ function computeMetrics(lm) {
   }
 
   trackAction(lm, m);
+
+  if (currentBall) {
+    m.ballX = currentBall.x;
+    m.ballY = currentBall.y;
+    m.hitDist = ballHitDistance(currentBall, lm);
+    m.ballOutside = ballOutsideBody(currentBall, lm);
+  }
 
   for (const k of Object.keys(METRICS)) {
     if (m[k] == null) continue;
@@ -627,14 +747,25 @@ function trackAction(lm, m) {
     aboveHead: wy < noseY,
     aboveBrow: wy < noseY + 0.05,
     knee: m.knee, cog: m.cog, jumpRise: m.jumpRise,
+    airborne: !!m.airborne,
     wristGap: visible(lm, [15, 16], 0.3) ? Math.hypot(lm[15].x - lm[16].x, lm[15].y - lm[16].y) : null,
     wristHigh: m.wristHigh, elbowMax: m.elbowExt,
+    ball: currentBall ? { x: currentBall.x, y: currentBall.y } : null,
+    hitDist: currentBall ? ballHitDistance(currentBall, lm) : null,
+    ballOutside: currentBall ? ballOutsideBody(currentBall, lm) : false,
   });
   while (motionSeries.length && t - motionSeries[0].t > 3) motionSeries.shift();
 
   const lastT = contactEvents.length ? contactEvents[contactEvents.length - 1].t : -Infinity;
-  if (skill.detect(motionSeries, lastT)) {
-    contactEvents.push({ t: motionSeries[motionSeries.length - 2].t });
+  const hit = skill.detect(motionSeries, lastT);
+  if (hit) {
+    const ev = typeof hit === 'object' ? hit : { t: motionSeries[motionSeries.length - 2].t, via: 'pose' };
+    contactEvents.push({
+      t: ev.t ?? motionSeries[motionSeries.length - 2].t,
+      via: ev.via || 'pose',
+      tossLike: !!ev.tossLike,
+      airborne: !!ev.airborne,
+    });
   }
 }
 
@@ -643,6 +774,10 @@ function classifyPhase(m) {
   if (contactEvents.some((e) => Math.abs(e.t - t) <= PHASE.contactWindow)) {
     standStreak = 0;
     return 'contact';
+  }
+  if (skill.id === 'spike' && m.airborne) {
+    standStreak = 0;
+    return 'airborne';
   }
   const upright = m.knee != null && m.knee >= PHASE.standKnee && (m.cog == null || m.cog < PHASE.standCog);
   standStreak = upright ? standStreak + 1 : 0;
@@ -658,6 +793,7 @@ function drawOverlay(lm, metrics) {
   octx.clearRect(0, 0, W, H);
   if (!lm) return;
   const standing = phase === 'standing';
+  const liveKey = (key) => !skill.metricLive || skill.metricLive(key, metrics || {}, phase);
 
   octx.lineWidth = Math.max(3, W / 320);
   octx.lineCap = 'round';
@@ -680,27 +816,45 @@ function drawOverlay(lm, metrics) {
     octx.fill();
   }
 
+  if (currentBall) {
+    const bx = currentBall.x * W, by = currentBall.y * H;
+    const br = Math.max(10, (currentBall.r || 0.04) * Math.min(W, H));
+    octx.save();
+    octx.strokeStyle = currentBall.stale ? 'rgba(255, 209, 102, 0.45)' : '#ffd166';
+    octx.lineWidth = Math.max(3, W / 280);
+    octx.shadowBlur = 14;
+    octx.shadowColor = '#ffd166';
+    octx.beginPath();
+    octx.arc(bx, by, br, 0, Math.PI * 2);
+    octx.stroke();
+    octx.restore();
+  }
+
   const badges = [];
-  const lvColor = (def, v) => (standing || !def) ? LEVEL_COLOR.none : LEVEL_COLOR[def.evaluate(v).level];
+  const lvColor = (def, v, key) => {
+    if (standing || !def) return LEVEL_COLOR.none;
+    if (key && !liveKey(key)) return LEVEL_COLOR.none;
+    return LEVEL_COLOR[def.evaluate(v).level];
+  };
   const elbowDef = METRICS[skill.overlay.elbowAs];
   const kneeDef = METRICS.knee;
   if (metrics) {
     const jointMap = {
-      13: [metrics.elbowL, elbowDef],
-      14: [metrics.elbowR, elbowDef],
-      25: [metrics.kneeL, kneeDef],
-      26: [metrics.kneeR, kneeDef],
+      13: [metrics.elbowL, elbowDef, skill.overlay.elbowAs],
+      14: [metrics.elbowR, elbowDef, skill.overlay.elbowAs],
+      25: [metrics.kneeL, kneeDef, 'knee'],
+      26: [metrics.kneeR, kneeDef, 'knee'],
     };
     for (const j of ANGLE_JOINTS) {
       const pair = jointMap[j.idx];
       if (!pair) continue;
-      const [v, def] = pair;
+      const [v, def, key] = pair;
       if (v == null || (lm[j.idx].visibility ?? 1) < 0.3) continue;
-      badges.push({ x: lm[j.idx].x * W, y: lm[j.idx].y * H, text: `${j.name} ${v}°`, color: lvColor(def, v) });
+      badges.push({ x: lm[j.idx].x * W, y: lm[j.idx].y * H, text: `${j.name} ${v}°`, color: lvColor(def, v, key) });
     }
     if (skill.overlay.tilt && metrics.platformTilt != null && visible(lm, [15, 16], 0.3)) {
       const wm = mid(lm[15], lm[16]);
-      const color = tiltActive(metrics) ? lvColor(METRICS.platformTilt, metrics.platformTilt) : LEVEL_COLOR.none;
+      const color = tiltActive(metrics) && liveKey('platformTilt') ? lvColor(METRICS.platformTilt, metrics.platformTilt, 'platformTilt') : LEVEL_COLOR.none;
       badges.push({ x: wm.x * W, y: wm.y * H + 26, text: `平台 ${metrics.platformTilt}°`, color });
     }
     if (phase === 'contact' && visible(lm, [15, 16], 0.3)) {
@@ -717,7 +871,7 @@ function drawOverlay(lm, metrics) {
     }
     if (skill.overlay.cog && metrics.cog != null) {
       const hipY = mid(lm[23], lm[24]).y * H;
-      const color = lvColor(METRICS.cog, metrics.cog);
+      const color = lvColor(METRICS.cog, metrics.cog, 'cog');
       octx.save();
       octx.setLineDash([10, 8]);
       octx.lineWidth = 2;
@@ -730,9 +884,11 @@ function drawOverlay(lm, metrics) {
       badges.push({ x: W * 0.04, y: hipY - 14, text: `髋部 ↓${metrics.cog}%`, color });
     }
   }
+  const ballTag = currentBall && !currentBall.stale ? ' · 已检出球' : (ballSeen > 8 ? '' : ' · 寻球中');
   const phaseBadge = {
-    contact: ['⚡ 击球动作（人体推算）', '#ffd166'],
-    ready: ['● 动作段 · 评估中', LEVEL_COLOR.good],
+    contact: [`⚡ 触球窗口${currentBall ? '（球体）' : '（人体相位）'}`, '#ffd166'],
+    airborne: ['▲ 腾空段 · 仅此评挥臂', '#ffd166'],
+    ready: [skill.id === 'spike' ? '○ 地面段 · 挥臂不计分' : `● 动作段${ballTag}`, skill.id === 'spike' ? LEVEL_COLOR.none : LEVEL_COLOR.good],
     standing: ['○ 站立段 · 不计分', LEVEL_COLOR.none],
     none: null,
   }[phase];
@@ -804,7 +960,7 @@ function tiltActive(m) {
   return phase === 'contact' || (m && m.platformTilt != null && m.platformTilt <= 55);
 }
 
-function fillMetricRow(el, def, v, standing, conf) {
+function fillMetricRow(el, def, v, standing, conf, inactiveHint) {
   if (v == null) {
     el.value.innerHTML = `--<small>${def.unit}</small>`;
     el.value.classList.remove('lowconf');
@@ -820,8 +976,8 @@ function fillMetricRow(el, def, v, standing, conf) {
   el.value.title = lowConf ? '置信度较低（可能被遮挡），评分时已降权' : '';
   const [min, max] = def.range;
   el.marker.style.left = `${clamp(((v - min) / (max - min)) * 100)}%`;
-  if (standing) {
-    setCardLevel(el, 'none', '站立·不计分', '');
+  if (standing || inactiveHint) {
+    setCardLevel(el, 'none', standing ? '站立·不计分' : '窗口外·不计分', inactiveHint || '');
     el.lvState.shown = 'none';
   } else {
     const shown = settleLevel(el.lvState, level);
@@ -838,7 +994,8 @@ function updateDashboard(m) {
       const def = METRICS[key];
       const sub = pEls.subs[key];
       const v = m ? m[key] : null;
-      const inactive = key === 'platformTilt' && v != null && !tiltActive(m);
+      const gated = skill.metricLive && m ? !skill.metricLive(key, m, phase) : false;
+      const inactive = gated || (key === 'platformTilt' && v != null && !tiltActive(m));
       if (v == null) {
         sub.value.innerHTML = `--<small>${def.unit}</small>`;
         sub.value.classList.remove('lowconf');
@@ -856,7 +1013,7 @@ function updateDashboard(m) {
       if (!inactive) subResults.push({ key, level, v });
     }
     if (!subResults.length) {
-      setCardLevel(pEls, 'none', m ? '未检测到' : '等待检测', '');
+      setCardLevel(pEls, 'none', standing ? '站立·不计分' : (phase === 'contact' ? '未检测到' : '等待触球窗口'), skill.idleHint?.platformExt || '');
       pEls.lvState.shown = 'none';
     } else if (standing) {
       setCardLevel(pEls, 'none', '站立·不计分', '');
@@ -870,7 +1027,12 @@ function updateDashboard(m) {
   for (const key of skill.stdKeys) {
     const el = metricEls[key];
     if (!el) continue;
-    fillMetricRow(el, METRICS[key], m ? m[key] : null, standing && !!m, m && m.conf ? m.conf[key] : 1);
+    const live = !skill.metricLive || !m || skill.metricLive(key, m, phase);
+    fillMetricRow(
+      el, METRICS[key], m ? m[key] : null, standing && !!m,
+      m && m.conf ? m.conf[key] : 1,
+      (!standing && m && !live) ? (skill.idleHint?.[key] || '非评分窗口 · 不计分') : null,
+    );
   }
   updateFocus(m, standing);
 }
@@ -887,22 +1049,29 @@ function updateFocus(m, standing) {
   }
   if (standing) {
     card.className = 'focus-card';
-    text.textContent = '站立段不计分 —— 开始动作后，按人体运动推算击球相位';
-    list.innerHTML = `<li class="good">站立段不计分。系统不检测排球，只根据人体动作标记击球相位。</li>`;
+    text.textContent = '站立段不计分 —— 开始动作后，在触球/腾空窗口才评分';
+    list.innerHTML = `<li class="good">站立等待不计分。发球、垫球、传球会尝试检测排球；扣球只评腾空挥臂。</li>`;
+    return;
+  }
+  if (skill.id === 'spike' && phase === 'ready') {
+    card.className = 'focus-card';
+    text.textContent = '地面挥臂不计分。请助跑起跳，系统只测量空中击球窗口的臂角与击球点。';
+    list.innerHTML = `<li class="good">扣球建议只针对腾空段：头上伸臂击球，而不是地面空挥。</li>`;
     return;
   }
   const issues = [];
   for (const key of skill.focusOrder) {
     const v = m[key];
     if (v == null || !METRICS[key]) continue;
+    if (skill.metricLive && !skill.metricLive(key, m, phase)) continue;
     if (key === 'platformTilt' && !tiltActive(m)) continue;
     const { level } = METRICS[key].evaluate(v);
     if (level !== 'good') issues.push({ key, level, v });
   }
   if (!issues.length) {
     card.className = 'focus-card lv-good';
-    text.textContent = phase === 'contact' ? '⚡ 击球动作相位：姿态良好，保持！' : '姿态良好，保持这个动作模式！';
-    list.innerHTML = `<li class="good">姿态良好，保持这个动作模式！</li>`;
+    text.textContent = phase === 'contact' ? '⚡ 触球窗口：姿态良好，保持！' : (phase === 'airborne' ? '▲ 腾空窗口姿态良好' : '等待触球窗口…');
+    list.innerHTML = `<li class="good">${phase === 'contact' || phase === 'airborne' ? '当前评分窗口内姿态良好。' : '窗口外动作仅作参考，建议看触球/腾空瞬间。'}</li>`;
     return;
   }
   issues.sort((a, b) => LV_RANK[b.level] - LV_RANK[a.level] || skill.focusOrder.indexOf(a.key) - skill.focusOrder.indexOf(b.key));
@@ -1027,7 +1196,11 @@ window.addEventListener('resize', () => {
 btnReport.addEventListener('click', buildReport);
 
 function pickScoredSamples() {
-  const contactSamples = history.filter((h) => h.phase === 'contact');
+  if (skill.scoreSample) {
+    const windowed = history.filter((h) => skill.scoreSample(h));
+    if (windowed.length >= 3) return { samples: windowed, mode: 'window' };
+  }
+  const contactSamples = history.filter((h) => h.phase === 'contact' || h.phase === 'airborne');
   if (contactEvents.length >= 1 && contactSamples.length >= 3) return { samples: contactSamples, mode: 'contact' };
   return { samples: history.filter((h) => h.phase !== 'standing'), mode: 'active' };
 }
@@ -1049,14 +1222,16 @@ function evalTiming() {
 function buildReport() {
   const scored = pickScoredSamples();
   if (scored.samples.length < 3) {
-    alert('数据太少：请先播放视频进行分析，再生成报告');
+    toast('数据太少：请先播放视频进行分析，再生成报告');
     return;
   }
 
   const stat = (key) => {
     if (!METRICS[key]) return null;
-    const rows = scored.samples
-      .filter((h) => h[key] != null)
+    const pool = skill.scoreKey
+      ? history.filter((h) => h[key] != null && skill.scoreKey(key, h))
+      : scored.samples.filter((h) => h[key] != null && (!skill.metricLive || skill.metricLive(key, h, h.phase)));
+    const rows = pool
       .map((h) => ({ v: h[key], w: clamp(h.conf && h.conf[key] != null ? h.conf[key] : 0.8, 0.4, 1) }));
     if (!rows.length) return null;
     const wSum = rows.reduce((s, r) => s + r.w, 0);
@@ -1087,9 +1262,22 @@ function buildReport() {
   const grade = score >= 85 ? '🏆 优秀' : score >= 70 ? '👍 良好' : score >= 55 ? '💪 继续加油' : '📌 需要重点纠正';
   const gradeText = score >= 85 ? '优秀' : score >= 70 ? '良好' : score >= 55 ? '继续加油' : '需要重点纠正';
 
-  const modeNote = scored.mode === 'contact'
-    ? `基于 ${contactEvents.length} 次击球动作相位（由人体运动推算，非球体检测；±${Math.round(PHASE.scoreWindow * 1000)}ms），站立段不计分`
-    : '未识别到明确的击球动作相位，按动作段（已剔除站立）统计，结果仅供参考。系统不检测排球。';
+  const ballHits = contactEvents.filter((e) => e.via === 'ball').length;
+  const tossLike = contactEvents.filter((e) => e.tossLike).length;
+  let modeNote;
+  if (scored.mode === 'window' || scored.mode === 'contact') {
+    const via = ballHits ? `其中 ${ballHits} 次由球体靠近击球部位确认` : '本次未稳定检出球体，已回退人体相位';
+    const win = skill.id === 'spike' ? '腾空击球窗口' : '触球窗口';
+    modeNote = `基于 ${contactEvents.length} 次${win}（${via}；±${Math.round(PHASE.scoreWindow * 1000)}ms）。站立与窗口外动作不计分。`;
+    if (skill.kind === 'toss' && ballHits && tossLike === 0) {
+      modeNote += ' 轨迹更像自垫/自传：考试项建议拍摄他人抛球后的接垫/传球。';
+    }
+    if (skill.kind === 'self' && tossLike >= Math.max(1, contactEvents.length - 1)) {
+      modeNote += ' 球多次从身外进入，更接近抛–垫/抛–传。';
+    }
+  } else {
+    modeNote = '未识别到明确的触球/腾空窗口，按动作段（已剔除站立）统计，结果仅供参考。';
+  }
 
   const issues = [];
   for (const [key] of skill.tableKeys) {
@@ -1143,7 +1331,7 @@ function buildReport() {
       <span class="meta-chip">🎓 ${esc(student.sid)}</span>
       <span class="meta-chip">${skill.icon} ${esc(skill.examName)}</span>
       <span class="meta-chip">🕐 ${dateStr}</span>
-      <span class="meta-chip">击球动作 ${contactEvents.length} 次（人体推算）</span>
+      <span class="meta-chip">触球 ${contactEvents.length} 次${ballHits ? ` · 检球 ${ballHits}` : ''}</span>
     </div>
     <div class="report-score">
       <div class="score-num">${score}</div>
@@ -1170,6 +1358,7 @@ function buildReport() {
     </div>` : ''}
     <div class="report-actions">
       <button class="btn btn-primary btn-sm" id="btn-export" type="button">📄 导出本项目 PDF</button>
+      <button class="btn btn-send btn-sm" id="btn-send-teacher" type="button">📤 一键发送教师</button>
       <button class="btn btn-ghost btn-sm" id="btn-export-md" type="button">⬇ 导出 Markdown</button>
       <button class="btn btn-ghost btn-sm" id="btn-export-all-inline" type="button">📄 全部项目总报告 PDF</button>
     </div>
@@ -1185,4 +1374,7 @@ function buildReport() {
     if (lastReport) exportSingleReportMd(lastReport);
   });
   $('#btn-export-all-inline').addEventListener('click', () => $('#btn-export-all')?.click());
+  $('#btn-send-teacher')?.addEventListener('click', () => {
+    toast('教师端对接即将开通。当前请先导出 PDF / Markdown，再自行提交给任课教师。');
+  });
 }

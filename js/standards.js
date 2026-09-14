@@ -3,7 +3,7 @@
  * ============================================================ */
 import { SKILLS } from './skills.js';
 
-export const METRICS = SKILLS.bump.metrics;
-export const REPORT_WEIGHTS = SKILLS.bump.weights;
-export const STANDARDS_DOC = SKILLS.bump.standards;
-export const PHASE = SKILLS.bump.phase;
+export const METRICS = SKILLS.tossBump.metrics;
+export const REPORT_WEIGHTS = SKILLS.tossBump.weights;
+export const STANDARDS_DOC = SKILLS.tossBump.standards;
+export const PHASE = SKILLS.tossBump.phase;

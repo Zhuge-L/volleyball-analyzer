@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VolleySense · 北京大学排球课程智能分析</title>
-  <meta name="description" content="北京大学公共体育排球课程考试视频分析：垫球、传球、下手发球、上手发球、扣球。" />
+  <meta name="description" content="北京大学公共体育排球课程考试视频分析：正面双手垫球（自垫 / 抛–垫）、正面双手传球（自传 / 抛–传）、上手发球与正面下手发球、扣球。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏐</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,7 +25,7 @@
       <p class="login-crest">北京大学 · 公共体育</p>
       <h1>排球课程智能分析</h1>
       <p class="login-lead">
-        本程序专门为北京大学排球课程研发，用于课堂与课后的考试视频自评：对照垫球、传球、发球、扣球的技术要点，给出可执行的纠正建议。全部计算在浏览器本地完成，视频不会上传到任何服务器。
+        本程序专门为北京大学排球课程研发，用于课堂与课后的考试视频自评：对照垫球、传球、发球、扣球的技术要点，在触球或腾空窗口给出可执行的纠正建议。人体姿态与球体检测均在浏览器本地完成，视频不会上传到任何服务器。
       </p>
       <form id="login-form" class="login-form" autocomplete="on">
         <div class="field">
@@ -43,7 +43,7 @@
         <p class="login-err" id="login-err" hidden>请填写姓名和学号后再进入。</p>
         <button class="btn btn-primary btn-block" type="submit">进入课堂</button>
       </form>
-      <p class="login-foot">不追踪排球本身 · 评分基于人体姿态关键帧 · 可课后练习、课上提交报告</p>
+      <p class="login-foot">评分窗口：触球瞬间 / 扣球腾空挥臂 · 下手发球为正面下手 · 视频仅保存在本机</p>
     </div>
   </section>
 
@@ -68,8 +68,7 @@
         <p class="eyebrow">PEKING UNIVERSITY · VOLLEYBALL</p>
         <h1>选择一项考试技术<br /><span class="grad-text">上传视频，对照标准自评</span></h1>
         <p class="lede">
-          面向北京大学排球课程的「教、学、练、评」闭环：学生可在课后用手机拍摄考试动作，系统按项目给出关键帧评分与改进建议，报告可导出交给任课教师。
-          <b>系统不识别排球</b>，只分析人体姿态；请按右侧建议的机位拍摄，评分才可靠。
+          面向北京大学排球课程的「教、学、练、评」闭环：垫球与传球均分为<strong>自练</strong>与<strong>考试（抛球后完成）</strong>；发球一格含上手与<strong>正面下手</strong>（不是侧面下手）。请按各项目给出的角度、距离、镜头离地高度拍摄。系统会尝试检测排球，并只在触球或腾空窗口评分。
         </p>
       </div>
       <div class="skill-grid" id="skill-grid"></div>
@@ -79,6 +78,7 @@
           <h3>📁 我的成绩档案 · 导出</h3>
           <span class="archive-actions">
             <button class="btn btn-ghost btn-sm" id="btn-export-all-md" type="button">⬇ 总报告 Markdown</button>
+            <button class="btn btn-send btn-sm" id="btn-send-teacher-hub" type="button">📤 一键发送教师</button>
             <button class="btn btn-primary btn-sm" id="btn-export-all" type="button">📄 全部项目总报告 PDF</button>
           </span>
         </div>
@@ -102,13 +102,13 @@
           <div class="upload-inner">
             <div class="upload-icon">📤</div>
             <p class="upload-title">点击选择，或把视频拖到这里</p>
-            <p class="upload-sub">支持 MP4 / MOV / WebM · 固定机位、全身入镜、先站直 1～2 秒再做动作</p>
+            <p class="upload-sub">支持 MP4 / MOV / WebM · 三脚架固定、全身入镜、镜头约髋至胸高、先站直 1～2 秒</p>
           </div>
         </div>
 
         <div class="notice-card">
-          <b>关于「球」：本系统不检测排球。</b>
-          画面上的动作标记来自手臂/身体的运动学峰值，用来近似击球相位。没有球的空挥也可能被标出，不能理解为「识别到了球」。
+          <b>关于「球」与评分窗口：</b>
+          发球、垫球、传球会尝试检出画面中的排球，用球体靠近手臂/手型的时刻标记触球。扣球只测量腾空后的挥臂与击球点，地面挥臂不计分。若未检出球体，才回退为人体动作相位估计。
         </div>
 
         <div class="history-card" id="history-card" hidden>
@@ -124,9 +124,9 @@
         <div class="ball">🏐</div>
         <div class="ring ring-1"></div>
         <div class="ring ring-2"></div>
-        <div class="orbit-tag tag-1">斜侧面 35°</div>
-        <div class="orbit-tag tag-2">全身入镜</div>
-        <div class="orbit-tag tag-3">先站直 2 秒</div>
+        <div class="orbit-tag tag-1">斜侧 45°</div>
+        <div class="orbit-tag tag-2">离地 1.0–1.5 m</div>
+        <div class="orbit-tag tag-3">距离 3–10 m</div>
       </div>
     </section>
 
@@ -170,11 +170,11 @@
               <span><i class="dot dot-knee"></i>膝角</span>
               <span><i class="dot dot-elbow"></i>上肢</span>
               <span><i class="dot dot-cog"></i>髋部/腾空</span>
-              <span><i class="dot dot-contact"></i>击球动作</span>
+              <span><i class="dot dot-contact"></i>触球窗口</span>
             </div>
           </div>
           <canvas id="chart" height="170"></canvas>
-          <p class="chart-hint" id="chart-hint">▲ = 由人体动作推算的击球相位（不是球体检测）· 点击曲线可跳转画面</p>
+          <p class="chart-hint" id="chart-hint">▲ = 触球窗口（优先球体检测）· 点击曲线可跳转画面</p>
         </div>
       </div>
 
@@ -191,11 +191,15 @@
       </div>
       <div id="standards-table"></div>
       <p class="modal-note">
-        以上为北京大学排球课程教学中的通用经验区间，可在 <code>js/skills.js</code> 按课堂要求调整。
-        评分只作用于由人体动作推算的击球相位关键帧；<b>不检测排球</b>。低置信度帧会自动降权。
+        区间来自排球教学标准与生物力学文献，已按公体课初学者下调；精英 3D 动捕数值只作上限参考。
+        评分只作用于触球窗口或扣球腾空窗口；低置信度帧会自动降权。不承诺肩旋转角度与绝对球速。
       </p>
     </div>
   </div>
+
+  <footer class="site-foot">
+    北京大学公共体育 · 排球课程 · VolleySense　数据仅保存在本机浏览器　v2.0
+  </footer>
 
   <script type="module" src="js/app.js"></script>
 </body>
