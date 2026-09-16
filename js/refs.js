@@ -28,7 +28,7 @@ export const REFS = {
   C6: { tag: 'C6', title: 'Oliosi et al. (2026). Smartphone camera positioning. JMIR mHealth uHealth. 斜向 1.8–2 m 检出率高' },
   C7: { tag: 'C7', title: '扣球研究常用 120–240 fps、快门 ≥1/1000 s' },
   C9: { tag: 'C9', title: 'Ramasamy et al. (2023). 过头动作肩旋转单目 2D 不可靠. Appl Sci 13(16):9463' },
-  C12: { tag: 'C12', title: 'Komisar et al. (2021). 光轴偏离 30° 时水平速度误差约 2.5 倍. PLoS ONE' },
+  C12: { tag: 'C12', title: 'Komisar et al. (2021). 光轴偏离 30° 时水平速度误差约 2.5 倍；身高可作垂直 1D 标定. PLoS ONE' },
   C14: { tag: 'C14', title: 'Francia (2024). MediaPipe 机位×距离×高度验证：髋高优于近地，避免俯仰拍' },
 };
 

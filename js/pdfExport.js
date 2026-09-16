@@ -102,6 +102,7 @@ function skillSectionHtml(r) {
         <tbody>${rows || '<tr><td colspan="3" class="missing">暂无明细</td></tr>'}</tbody>
       </table>
       ${issuesHtml}
+      ${r.scaleNote ? `<p class="score-note">${esc(r.scaleNote)}。厘米为垂直方向估算，不作绝对测距。</p>` : ''}
     </section>`;
 }
 
@@ -123,6 +124,7 @@ function buildSingleDoc(r) {
   <div class="meta">
     <span>姓名：${esc(r.name || '（未填写）')}</span>
     <span>学号：${esc(r.sid || '（未填写）')}</span>
+    <span>身高：${esc(r.height ? `${r.height} cm` : '未填')}</span>
     <span>导出时间：${esc(r.dateStr || '')}</span>
   </div>
   ${skillSectionHtml(r)}
@@ -146,6 +148,7 @@ function buildCombinedDoc(student, reports, summaryRows) {
   <div class="meta">
     <span>姓名：${esc(student.name || '（未填写）')}</span>
     <span>学号：${esc(student.sid || '（未填写）')}</span>
+    <span>身高：${esc(student.height ? `${student.height} cm` : '未填')}</span>
     <span>导出时间：${esc(dateStr)}</span>
   </div>
   <section class="section">
@@ -183,6 +186,7 @@ function reportToMd(r) {
     '',
     `- 课程：北京大学排球课程`,
     `- 姓名：${r.name || '（未填写）'}　学号：${r.sid || '（未填写）'}`,
+    `- 身高：${r.height ? `${r.height} cm` : '未填'}`,
     `- 时间：${r.dateStr || '—'}`,
     `- 视频时长：${r.duration || '—'}　触球窗口：${r.contacts ?? '—'} 次`,
     `- 评分方式：${r.modeNote || '—'}`,

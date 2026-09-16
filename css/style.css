@@ -97,6 +97,7 @@ body {
 .remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
 .remember input { accent-color: var(--accent2); }
 .login-err { color: var(--bad); font-size: 13px; }
+.field-hint { font-size: 12px; color: var(--text-dim); line-height: 1.65; margin: -4px 0 4px; }
 .login-foot { margin-top: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.7; }
 
 /* ---------- 项目选择 ---------- */
@@ -187,6 +188,62 @@ body {
 .camera-card h3 { font-size: 14px; color: var(--text); margin-bottom: 6px; }
 .camera-card b, .notice-card b { color: var(--text); }
 .notice-card { border-color: rgba(255, 176, 32, 0.35); }
+
+.teach-panel {
+  max-width: 620px; margin: 0 0 18px;
+  background: var(--panel); border: 1px solid var(--stroke);
+  border-radius: var(--radius); padding: 16px 18px 18px;
+}
+.teach-panel h3 { font-size: 14px; margin-bottom: 12px; }
+.teach-layout {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(160px, 0.85fr);
+  gap: 14px; align-items: stretch;
+}
+.teach-video-col {
+  position: relative; background: #050814; border-radius: 14px; overflow: hidden;
+  min-height: 180px; border: 1px solid var(--stroke);
+}
+.teach-video-col video { display: block; width: 100%; max-height: 280px; background: #000; }
+.teach-placeholder {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 18px;
+  text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.7;
+}
+.teach-placeholder b { color: var(--text); }
+.teach-placeholder code {
+  background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 6px; font-size: 12px;
+}
+.teach-ph-icon { font-size: 32px; }
+.teach-coach {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--stroke);
+  border-radius: 14px; padding: 12px 12px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.coach-figure { width: 72px; height: 92px; position: relative; }
+.coach-head {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(160deg, #f3d2b5, #d4a574);
+  margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+}
+.coach-torso {
+  width: 46px; height: 48px; margin: 6px auto 0;
+  border-radius: 14px 14px 10px 10px;
+  background: linear-gradient(160deg, #8b1e2d, #c9343a);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.12);
+}
+.coach-whistle {
+  position: absolute; left: 50%; top: 30px; width: 10px; height: 10px;
+  border-radius: 50%; background: #e8e8e8; transform: translateX(10px);
+}
+.coach-meta { text-align: center; }
+.coach-meta strong { display: block; font-size: 14px; }
+.coach-meta span { font-size: 11px; color: var(--text-dim); }
+.coach-bubble {
+  width: 100%; font-size: 12.5px; color: var(--text); line-height: 1.65;
+  background: rgba(0, 212, 255, 0.08); border: 1px solid rgba(0, 212, 255, 0.25);
+  border-radius: 12px; padding: 10px 12px;
+}
+.coach-bubble p + p { margin-top: 6px; color: var(--text-dim); }
 .cam-specs {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
   margin: 10px 0 12px;
@@ -532,6 +589,9 @@ main { padding: 0 clamp(20px, 5vw, 64px) 80px; }
 .focus-label { font-size: 12px; color: var(--text-dim); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
 .focus-text { font-size: 14.5px; line-height: 1.65; }
 .focus-text b { font-family: var(--font-num); color: var(--accent2); }
+.calib-chip {
+  margin-top: 8px; font-size: 12px; color: var(--text-dim); line-height: 1.55;
+}
 .focus-card.lv-bad .focus-text b { color: var(--bad); }
 .focus-card.lv-warn .focus-text b { color: var(--warn); }
 
@@ -592,6 +652,7 @@ main { padding: 0 clamp(20px, 5vw, 64px) 80px; }
 @media (max-width: 1024px) {
   .hero { grid-template-columns: 1fr; min-height: auto; padding-top: 48px; }
   .hero-visual { display: none; }
+  .teach-layout { grid-template-columns: 1fr; }
   .analyzer { grid-template-columns: 1fr; }
   .dash-col { position: static; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
   .dash-group { grid-column: 1 / -1; }

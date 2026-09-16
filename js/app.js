@@ -14,6 +14,9 @@ import {
   ballHitDistance, ballOutsideBody,
 } from './ballDetect.js';
 import { exportSingleReportPdf, exportCombinedReportPdf, exportSingleReportMd, exportCombinedReportMd } from './pdfExport.js';
+import {
+  setStature, resetVideoScale, updateStandingScale, formatScaled, calibCaption, scaleState,
+} from './scale.js';
 
 const $ = (s) => document.querySelector(s);
 const clamp = (v, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, v));
@@ -61,7 +64,7 @@ let lastSampleT = -1;
 let rafId = 0;
 let savedHistoryLen = 0;
 let lastReport = null;
-let student = { name: '', sid: '' };
+let student = { name: '', sid: '', height: null };
 let skill = getSkill('tossBump');
 let currentBall = null;
 let ballSeen = 0;
@@ -81,8 +84,11 @@ let PHASE = skill.phase;
  * 登录
  * ============================================================ */
 function applySession(s) {
-  student = { name: s.name, sid: s.sid };
-  $('#user-chip').textContent = `${s.name} · ${s.sid}`;
+  student = { name: s.name, sid: s.sid, height: s.height || null };
+  setStature(student.height);
+  $('#user-chip').textContent = student.height
+    ? `${s.name} · ${s.sid} · ${student.height} cm`
+    : `${s.name} · ${s.sid}`;
   loginScreen.hidden = true;
   topbar.hidden = false;
   appMain.hidden = false;
@@ -94,7 +100,8 @@ try {
   if (saved && saved.name && saved.sid) {
     $('#login-name').value = saved.name;
     $('#login-sid').value = saved.sid;
-    applySession(saved);
+    if (saved.height) $('#login-height').value = saved.height;
+    if (saved.height) applySession(saved);
   }
 } catch { /* ignore */ }
 
@@ -102,10 +109,14 @@ $('#login-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('#login-name').value.trim();
   const sid = $('#login-sid').value.trim();
+  const height = Number($('#login-height').value);
   const err = $('#login-err');
-  if (!name || !sid) { err.hidden = false; return; }
+  if (!name || !sid || !Number.isFinite(height) || height < 140 || height > 210) {
+    err.hidden = false;
+    return;
+  }
   err.hidden = true;
-  const rec = { name, sid };
+  const rec = { name, sid, height: Math.round(height) };
   if ($('#login-remember').checked) {
     try { localStorage.setItem(LS_SESSION, JSON.stringify(rec)); } catch { /* ignore */ }
   } else {
@@ -120,7 +131,9 @@ $('#btn-send-teacher-hub')?.addEventListener('click', () => {
 
 $('#btn-logout').addEventListener('click', () => {
   try { localStorage.removeItem(LS_SESSION); } catch { /* ignore */ }
-  student = { name: '', sid: '' };
+  student = { name: '', sid: '', height: null };
+  resetVideoScale();
+  setStature(null);
   leaveAnalyzer();
   topbar.hidden = true;
   appMain.hidden = true;
@@ -146,6 +159,12 @@ function showHub() {
 
 function leaveAnalyzer() {
   video.pause();
+  const teachVid = $('#teach-video');
+  if (teachVid) {
+    teachVid.pause();
+    teachVid.removeAttribute('src');
+    teachVid.load();
+  }
   if (videoURL) URL.revokeObjectURL(videoURL);
   videoURL = null;
   video.removeAttribute('src');
@@ -238,7 +257,35 @@ function selectSkill(id) {
   hero.hidden = false;
   analyzer.hidden = true;
   renderHistory();
+  bindTeach(skill);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function bindTeach(sk) {
+  const teach = sk.teach;
+  const videoEl = $('#teach-video');
+  const ph = $('#teach-placeholder');
+  const bubble = $('#coach-bubble');
+  if (!teach) return;
+  $('#coach-name').textContent = teach.coachName;
+  $('#coach-role').textContent = teach.coachRole;
+  bubble.innerHTML = (teach.points || []).map((p) => `<p>${esc(p)}</p>`).join('');
+  videoEl.pause();
+  videoEl.removeAttribute('src');
+  videoEl.hidden = true;
+  ph.hidden = false;
+  const onOk = () => {
+    videoEl.hidden = false;
+    ph.hidden = true;
+  };
+  const onFail = () => {
+    videoEl.hidden = true;
+    ph.hidden = false;
+  };
+  videoEl.onloadeddata = onOk;
+  videoEl.onerror = onFail;
+  videoEl.src = teach.video;
+  videoEl.load();
 }
 
 /* ============================================================
@@ -366,7 +413,7 @@ function buildDashboard() {
   const focus = document.createElement('div');
   focus.className = 'focus-card';
   focus.id = 'focus-card';
-  focus.innerHTML = `<div class="focus-label">🎯 当前重点</div><div class="focus-text" id="focus-text">上传视频后点击「播放分析」开始</div>`;
+  focus.innerHTML = `<div class="focus-label">🎯 当前重点</div><div class="focus-text" id="focus-text">上传视频后点击「播放分析」开始</div><p class="calib-chip" id="calib-chip">${esc(calibCaption())}</p>`;
   dash.appendChild(focus);
 
   if (skill.combined) {
@@ -519,6 +566,7 @@ function resetAnalysisState() {
   currentBall = null;
   ballSeen = 0;
   resetBallTrack();
+  resetVideoScale();
 }
 
 function loadFile(file) {
@@ -694,7 +742,13 @@ function computeMetrics(lm) {
     }
     if (m.knee != null && m.knee >= PHASE.standKnee && (m.cog == null || m.cog < PHASE.standCog)) {
       hipStandY = hipStandY ? hipStandY * 0.85 + hip.y * 0.15 : hip.y;
+      if (visible(lm, [0, 27, 28], 0.35)) {
+        const span = mid(lm[27], lm[28]).y - lm[0].y;
+        updateStandingScale(span);
+      }
     }
+    scaleState.hipStandY = hipStandY || null;
+    scaleState.cogBaseline = cogBaseline || null;
     if (hipStandY > 0.05) {
       m.jumpRise = Math.max(0, Math.round(((hipStandY - hip.y) / hipStandY) * 100));
       m.conf.jumpRise = minVis(23, 24);
@@ -960,6 +1014,12 @@ function tiltActive(m) {
   return phase === 'contact' || (m && m.platformTilt != null && m.platformTilt <= 55);
 }
 
+function setMetricDisplay(el, def, v) {
+  const shown = formatScaled(def, v);
+  el.innerHTML = `${shown.n}<small>${shown.unit}</small>`;
+  el.title = shown.title || '';
+}
+
 function fillMetricRow(el, def, v, standing, conf, inactiveHint) {
   if (v == null) {
     el.value.innerHTML = `--<small>${def.unit}</small>`;
@@ -971,9 +1031,9 @@ function fillMetricRow(el, def, v, standing, conf, inactiveHint) {
   }
   const { level, text } = def.evaluate(v);
   const lowConf = (conf ?? 1) < 0.55;
-  el.value.innerHTML = `${v}<small>${def.unit}</small>`;
+  setMetricDisplay(el.value, def, v);
   el.value.classList.toggle('lowconf', lowConf);
-  el.value.title = lowConf ? '置信度较低（可能被遮挡），评分时已降权' : '';
+  if (lowConf) el.value.title = (el.value.title ? `${el.value.title} · ` : '') + '置信度较低（可能被遮挡），评分时已降权';
   const [min, max] = def.range;
   el.marker.style.left = `${clamp(((v - min) / (max - min)) * 100)}%`;
   if (standing || inactiveHint) {
@@ -1005,7 +1065,7 @@ function updateDashboard(m) {
       }
       const { level } = def.evaluate(v);
       const lowConf = ((m.conf && m.conf[key]) ?? 1) < 0.55;
-      sub.value.innerHTML = `${v}<small>${def.unit}</small>`;
+      setMetricDisplay(sub.value, def, v);
       sub.value.classList.toggle('lowconf', lowConf);
       sub.dot.className = `lv-dot ${standing || inactive ? 'none' : level}`;
       const [min, max] = def.range;
@@ -1035,6 +1095,8 @@ function updateDashboard(m) {
     );
   }
   updateFocus(m, standing);
+  const chip = $('#calib-chip');
+  if (chip) chip.textContent = calibCaption();
 }
 
 function updateFocus(m, standing) {
@@ -1049,8 +1111,8 @@ function updateFocus(m, standing) {
   }
   if (standing) {
     card.className = 'focus-card';
-    text.textContent = '站立段不计分 —— 开始动作后，在触球/腾空窗口才评分';
-    list.innerHTML = `<li class="good">站立等待不计分。发球、垫球、传球会尝试检测排球；扣球只评腾空挥臂。</li>`;
+    text.textContent = '站立段不计分 —— 正在用身高做垂直 1D 标定，随后只在触球/腾空窗口评分';
+    list.innerHTML = `<li class="good">${esc(calibCaption())}。发球、垫球、传球会尝试检测排球；扣球只评腾空挥臂。</li>`;
     return;
   }
   if (skill.id === 'spike' && phase === 'ready') {
@@ -1294,10 +1356,19 @@ function buildReport() {
   const reportSnapshot = {
     score, gradeText, dateStr, modeNote, issues,
     contacts: contactEvents.length, duration: fmt(video.duration || 0),
-    name: student.name, sid: student.sid,
+    name: student.name, sid: student.sid, height: student.height,
+    scaleNote: calibCaption(),
     skillId: skill.id, skillName: skill.examName, skillIcon: skill.icon,
     tableRows: [
-      ...skill.tableKeys.map(([k, u]) => [METRICS[k].label, stats[k] ? `${stats[k].avg}${u}` : '--', stats[k] ? `${stats[k].goodPct}%` : '--']),
+      ...skill.tableKeys.map(([k, u]) => {
+        const s = stats[k];
+        if (!s) return [METRICS[k].label, '--', '--'];
+        const shown = formatScaled(METRICS[k], s.avg);
+        const avgTxt = shown.unit && shown.unit !== u
+          ? `${shown.n}${shown.unit}`
+          : `${s.avg}${u}`;
+        return [METRICS[k].label, avgTxt, `${s.goodPct}%`];
+      }),
       ['蹬地发力时机', timing ? `${timing.ok}/${timing.judged} 次` : '--', timing ? `${Math.round(timing.pct * 100)}%` : '--'],
     ],
   };
@@ -1318,9 +1389,14 @@ function buildReport() {
   const sessions = loadSessions().filter((s) => s.name === student.name && (!s.skill || s.skill === skill.id));
   const trend = sessions.slice(-5).map((s) => s.score);
 
-  const row = (name, s, unit) => s
-    ? `<tr><td>${name}</td><td><b>${s.avg}${unit}</b></td><td>${s.goodPct}%</td></tr>`
-    : `<tr><td>${name}</td><td>--</td><td>--</td></tr>`;
+  const row = (name, s, key, unit) => {
+    if (!s) return `<tr><td>${name}</td><td>--</td><td>--</td></tr>`;
+    const shown = formatScaled(METRICS[key], s.avg);
+    const avgTxt = shown.n !== String(s.avg) || shown.unit !== unit
+      ? `<b>${shown.n}${shown.unit}</b>`
+      : `<b>${s.avg}${unit}</b>`;
+    return `<tr><td>${name}</td><td>${avgTxt}</td><td>${s.goodPct}%</td></tr>`;
+  };
   const timingRow = timing
     ? `<tr><td>蹬地发力时机</td><td><b>${timing.ok}/${timing.judged} 次</b></td><td>${Math.round(timing.pct * 100)}%</td></tr>`
     : `<tr><td>蹬地发力时机</td><td>--</td><td>--</td></tr>`;
@@ -1329,7 +1405,7 @@ function buildReport() {
     <div class="report-meta">
       <span class="meta-chip">👤 ${esc(student.name)}</span>
       <span class="meta-chip">🎓 ${esc(student.sid)}</span>
-      <span class="meta-chip">${skill.icon} ${esc(skill.examName)}</span>
+      <span class="meta-chip">📏 ${student.height ? `${student.height} cm` : '未填身高'}</span>
       <span class="meta-chip">🕐 ${dateStr}</span>
       <span class="meta-chip">触球 ${contactEvents.length} 次${ballHits ? ` · 检球 ${ballHits}` : ''}</span>
     </div>
@@ -1339,12 +1415,13 @@ function buildReport() {
         <div class="score-grade">${grade}</div>
         <div class="score-sub">${parts.map(([n, w]) => `${n} ${Math.round((w / wSum) * 100)}%`).join(' · ')} 加权</div>
         <div class="score-sub">${modeNote}</div>
+        <div class="score-sub">${esc(calibCaption())}。厘米为垂直估算，不作绝对测距。</div>
       </div>
     </div>
     <table class="report-table">
       <thead><tr><th>指标</th><th>平均值</th><th>理想区间占比</th></tr></thead>
       <tbody>
-        ${skill.tableKeys.map(([k, u]) => row(METRICS[k].label, stats[k], u)).join('')}
+        ${skill.tableKeys.map(([k, u]) => row(METRICS[k].label, stats[k], k, u)).join('')}
         ${timingRow}
       </tbody>
     </table>

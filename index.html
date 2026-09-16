@@ -36,11 +36,16 @@
           <label for="login-sid">学号</label>
           <input id="login-sid" name="sid" type="text" required placeholder="请输入学号" inputmode="numeric" autocomplete="username" />
         </div>
+        <div class="field">
+          <label for="login-height">身高（厘米）</label>
+          <input id="login-height" name="height" type="number" required min="140" max="210" step="1" placeholder="例如 172" inputmode="decimal" />
+        </div>
+        <p class="field-hint">用于把击球点、腾空等垂直量换成大约厘米：站直时用鼻–踝长度对照身高做 1D 标定（仅垂直方向，不是测距仪）。</p>
         <label class="remember">
           <input type="checkbox" id="login-remember" checked />
           在本机记住登录（仅保存在浏览器本地）
         </label>
-        <p class="login-err" id="login-err" hidden>请填写姓名和学号后再进入。</p>
+        <p class="login-err" id="login-err" hidden>请填写姓名、学号和身高后再进入。</p>
         <button class="btn btn-primary btn-block" type="submit">进入课堂</button>
       </form>
       <p class="login-foot">评分窗口：触球瞬间 / 扣球腾空挥臂 · 下手发球为正面下手 · 视频仅保存在本机</p>
@@ -97,6 +102,32 @@
 
         <div class="camera-card" id="camera-card"></div>
 
+        <div class="teach-panel" id="teach-panel">
+          <h3>课堂示范与讲解</h3>
+          <div class="teach-layout">
+            <div class="teach-video-col">
+              <video id="teach-video" controls playsinline preload="metadata" hidden></video>
+              <div class="teach-placeholder" id="teach-placeholder">
+                <span class="teach-ph-icon">🎬</span>
+                <p><b>教学视频待上传</b></p>
+                <p>录好后放到 <code>assets/teach/</code>，文件名与项目一致即可在此播放。</p>
+              </div>
+            </div>
+            <aside class="teach-coach">
+              <div class="coach-figure" aria-hidden="true">
+                <div class="coach-head"></div>
+                <div class="coach-torso"></div>
+                <div class="coach-whistle"></div>
+              </div>
+              <div class="coach-meta">
+                <strong id="coach-name">林老师</strong>
+                <span id="coach-role">北京大学排球课 · 动作讲解</span>
+              </div>
+              <div class="coach-bubble" id="coach-bubble"></div>
+            </aside>
+          </div>
+        </div>
+
         <div class="upload-zone" id="drop-zone" role="button" tabindex="0" aria-label="上传视频">
           <input type="file" id="file-input" accept="video/*" hidden />
           <div class="upload-inner">
@@ -120,13 +151,10 @@
         </div>
       </div>
 
-      <div class="hero-visual" aria-hidden="true">
-        <div class="ball">🏐</div>
-        <div class="ring ring-1"></div>
-        <div class="ring ring-2"></div>
-        <div class="orbit-tag tag-1">斜侧 45°</div>
-        <div class="orbit-tag tag-2">离地 1.0–1.5 m</div>
-        <div class="orbit-tag tag-3">距离 3–10 m</div>
+      <div class="hero-visual teach-hero" aria-hidden="true">
+        <div class="orbit-tag tag-1">先看示范</div>
+        <div class="orbit-tag tag-2">再上传自评</div>
+        <div class="orbit-tag tag-3">填写身高换算 cm</div>
       </div>
     </section>
 
@@ -193,6 +221,7 @@
       <p class="modal-note">
         区间来自排球教学标准与生物力学文献，已按公体课初学者下调；精英 3D 动捕数值只作上限参考。
         评分只作用于触球窗口或扣球腾空窗口；低置信度帧会自动降权。不承诺肩旋转角度与绝对球速。
+        击球点等长度反馈在填写身高并站直标定后显示为垂直方向厘米估算（鼻–踝 ≈ 0.897×身高）。
       </p>
     </div>
   </div>

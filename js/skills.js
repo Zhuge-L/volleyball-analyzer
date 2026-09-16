@@ -9,8 +9,10 @@
  * 传球 = 正面双手传球。
  * ============================================================ */
 
-function M(label, short, unit, range, zones, evaluate, fix) {
-  return { label, short, unit, range, zones, evaluate, fix };
+import { liftHint, lowerHint, dropHint, jumpHint, gapHint } from './scale.js';
+
+function M(label, short, unit, range, zones, evaluate, fix, extra = {}) {
+  return { label, short, unit, range, zones, evaluate, fix, ...extra };
 }
 
 const kneeBump = M('膝关节夹角', '膝角', '°', [60, 180],
@@ -55,7 +57,8 @@ const cogDrop = M('髋部下降幅度', '髋部', '%', [0, 30],
     if (v >= 6) return { level: 'warn', text: '重心下降不够充分，再蹲低一点' };
     return { level: 'bad', text: '重心过高：请屈膝下蹲，降低重心再迎球' };
   },
-  (v) => (v < 12 ? `髋部再下降约 ${12 - v}%` : null),
+  (v) => dropHint(v, 12),
+  { scale: 'cog' },
 );
 
 /** 文献肩髋—水平 55°–72° ⇔ 本系统肩髋—竖直约 18°–35° */
@@ -98,7 +101,8 @@ const wristHigh = M('击球点高度', '击球点', '', [0, 40],
     if (v >= 3) return { level: 'warn', text: '击球点略低，再向上伸展一些' };
     return { level: 'bad', text: '击球点过低：应在头上方最高点击球' };
   },
-  (v) => (v < 8 ? `击球点再抬高约 ${8 - v}` : null),
+  (v) => liftHint(v, 8),
+  { scale: 'vert' },
 );
 
 const wristSet = M('手型高度', '手型', '', [-5, 30],
@@ -109,7 +113,8 @@ const wristSet = M('手型高度', '手型', '', [-5, 30],
     if (v <= 22) return { level: 'warn', text: '手型略高，注意在额前而不是脑后' };
     return { level: 'bad', text: '传球点偏离额前，先把球接到额头前方' };
   },
-  (v) => (v < 4 ? `手型再抬到额前上方` : v > 16 ? `手型略降到额前一球处` : null),
+  (v) => (v < 4 ? (liftHint(v, 4, '手型') || '手型再抬到额前上方') : v > 16 ? (lowerHint(v, 16, '手型') || '手型略降到额前一球处') : null),
+  { scale: 'vert' },
 );
 
 const handsGap = M('两手间距', '间距', '', [0, 40],
@@ -119,7 +124,8 @@ const handsGap = M('两手间距', '间距', '', [0, 40],
     if (v <= 16) return { level: 'warn', text: '两手略分开，拇指食指再靠拢一些' };
     return { level: 'bad', text: '两手过开：球会从手中漏掉或飞偏' };
   },
-  (v) => (v > 10 ? `两手再靠拢约 ${v - 10}` : null),
+  (v) => gapHint(v, 10),
+  { scale: 'len' },
 );
 
 const setElbow = M('传球肘角', '肘角', '°', [60, 180],
@@ -140,7 +146,8 @@ const underWrist = M('击球点高度', '击球点', '', [-8, 30],
     if (v <= 12) return { level: 'warn', text: '击球点略高，注意由下向前摆臂，不要撩成上手' };
     return { level: 'bad', text: '击球点过高：已接近上手，请保持正面下手挥臂' };
   },
-  (v) => (v > 6 ? `击球点再放到腹前` : null),
+  (v) => lowerHint(v, 6) || (v > 6 ? '击球点再放到腹前' : null),
+  { scale: 'vert' },
 );
 
 const jumpRise = M('起跳腾空', '腾空', '%', [0, 25],
@@ -150,7 +157,8 @@ const jumpRise = M('起跳腾空', '腾空', '%', [0, 25],
     if (v >= 3) return { level: 'warn', text: '腾空偏小，助跑起跳再充分一些' };
     return { level: 'bad', text: '几乎没有起跳：地面挥臂不计入扣球评分' };
   },
-  (v) => (v < 6 ? `腾空再增加约 ${6 - v}%` : null),
+  (v) => jumpHint(v, 6),
+  { scale: 'jump' },
 );
 
 const PHASE_BASE = {
@@ -250,6 +258,15 @@ const CAM = {
   },
 };
 
+function T(id, points) {
+  return {
+    video: `assets/teach/${id}.mp4`,
+    coachName: '林老师',
+    coachRole: '北京大学排球课 · 动作讲解',
+    points,
+  };
+}
+
 function bumpSkill(spec) {
   const exam = spec.kind === 'self';
   return {
@@ -262,6 +279,7 @@ function bumpSkill(spec) {
     blurb: spec.blurb,
     needsBall: true,
     camera: CAM.bump,
+    teach: spec.teach,
     metrics: {
       platformExt: M('平台伸直度', '伸直', '°', [60, 180],
         [{ from: 165, to: 180, level: 'good' }, { from: 150, to: 165, level: 'warn' }],
@@ -370,6 +388,7 @@ function setSkill(spec) {
     blurb: spec.blurb,
     needsBall: true,
     camera: CAM.set,
+    teach: spec.teach,
     metrics: {
       wristHigh: wristSet, handsGap, setElbow, knee: kneeLight, trunk: trunkUpright,
     },
@@ -433,6 +452,11 @@ export const SKILLS = {
     name: '自垫球',
     examName: '正面双手垫球 · 自垫球（基础练习）',
     blurb: '基础练习：自己把球连续垫起，重点是击球平台稳定、节奏均匀。系统会看球是否在体前反复触臂。',
+    teach: T('selfBump', [
+      '两臂伸直夹紧，用前臂桡骨内侧平面垫球，不要打在手腕上。',
+      '先半蹲，球到腹前再蹬地送髋、抬臂，用腿送球。',
+      '自己连续垫时保持平台朝向稳定，节奏均匀即可。',
+    ]),
   }),
   tossBump: bumpSkill({
     id: 'tossBump',
@@ -440,6 +464,11 @@ export const SKILLS = {
     name: '抛–垫球',
     examName: '正面双手垫球 · 抛–垫球（考试）',
     blurb: '考试内容：他人抛球后接垫。准备半蹲，球由身外进入，至肩平面附近再插臂夹紧蹬送。',
+    teach: T('tossBump', [
+      '这是考试项：等别人把球抛过来，不要做成自垫。',
+      '球落到肩平面附近再「插—夹—提」：提肩、顶肘、压腕、抬臂。',
+      '半蹲迎球，两臂夹紧成一个平面，把球垫向目标区。',
+    ]),
   }),
   selfSet: setSkill({
     id: 'selfSet',
@@ -447,6 +476,11 @@ export const SKILLS = {
     name: '自传球',
     examName: '正面双手传球 · 自传球（基础练习）',
     blurb: '基础练习：自己连续正面双手传球，练额前手型与上下肢协调。',
+    teach: T('selfSet', [
+      '正面双手，手型在额前上方约一球距离，拇指相对成半球。',
+      '先屈肘缓冲，再蹬地伸送，不要拍击球。',
+      '连续自传时上体保持较直，便于把球向上送。',
+    ]),
   }),
   tossSet: setSkill({
     id: 'tossSet',
@@ -454,6 +488,11 @@ export const SKILLS = {
     name: '抛–传球',
     examName: '正面双手传球 · 抛–传球（考试）',
     blurb: '考试内容：他人抛球后，正面双手在额前上方约一球处传出。不是侧面传球。',
+    teach: T('tossSet', [
+      '正对来球，球到额前约一球处再传，这是考试内容。',
+      '下肢先蹬，力量再传到手指，避免端着球推压。',
+      '不是侧面传球：身体和手型都要正对来球方向。',
+    ]),
   }),
 
   underhand: {
@@ -466,6 +505,11 @@ export const SKILLS = {
     blurb: '考试口径是正面下手发球：面对球网，两脚前后开立，腹前抛球后以肩为轴钟摆挥臂，击球点在腹前。不是侧面下手发球。',
     needsBall: true,
     camera: CAM.underhand,
+    teach: T('underhand', [
+      '必须是正面下手：面对球网，两脚前后开立，不是体侧摆臂。',
+      '球离手约 20–30 cm，击球臂伸直、以肩为轴钟摆，击打球的后下方。',
+      '右脚蹬地，重心由后脚移到前脚，击球点留在腹前。',
+    ]),
     metrics: {
       elbowExt, wristHigh: underWrist, knee: kneeLight, trunk: trunkBump,
     },
@@ -530,6 +574,11 @@ export const SKILLS = {
     blurb: '头上最高点击球、击球臂伸展、抛球在击球肩前上方。挥臂只在头上触球窗口计分，地面引臂不计分。',
     needsBall: true,
     camera: CAM.overhand,
+    teach: T('overhand', [
+      '抛球在击球肩前上方，教学高度大约 50–70 cm，要稳、少旋转。',
+      '系统只评头上触球窗口：引臂、空挥都不计分。',
+      '击球瞬间手臂伸展；飘球手腕固定、随挥短促，不要带上旋。',
+    ]),
     metrics: {
       elbowExt, wristHigh, knee: kneeLight, trunk: trunkBump,
     },
@@ -570,7 +619,7 @@ export const SKILLS = {
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '抛球在击球肩前上方约 50–70 cm，蹬地转体，在头上最高点鞭打；飘球手腕固定、随挥短促',
-    refs: ['R7', 'R8', 'R10', 'C2'],
+    refs: ['R7', 'R8', 'R10', 'C2', 'C12'],
     standards: [
       { name: '击球臂伸直度', good: '145° ~ 180°（课堂）', warn: '130° ~ 145°', bad: '< 130°', note: '课堂要求头上伸展击球。女大学生触球肘屈约 48°–50°（约 130° 肘角）为精英参考，不作初学者硬门槛 [R8]' },
       { name: '击球点高度', good: '头上方最高点', warn: '略低', bad: '肩附近或更低', note: '抛球位于击球肩前上方，教学抛高约 50–70 cm [R7]' },
@@ -590,6 +639,11 @@ export const SKILLS = {
     blurb: '只评价腾空段：助跑起跳后，在空中挥臂、头上击球。地面上怎么挥臂都不计分，建议也只针对空中击球窗口。',
     needsBall: true,
     camera: CAM.spike,
+    teach: T('spike', [
+      '地面挥臂不计分。先助跑起跳，只看腾空后的挥臂和击球点。',
+      '起跳前膝屈大约 110°–130°；空中伸膝不是错误。',
+      '在重心最高点稍后、开始下落时头上击球，手臂充分伸展。',
+    ]),
     metrics: {
       jumpRise, elbowExt, wristHigh, knee: kneeSpike, trunk: trunkBump,
     },
@@ -644,7 +698,7 @@ export const SKILLS = {
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '在重心最高点稍后、开始下落时击球；地面挥臂再标准也不计入扣球',
-    refs: ['R8', 'R23', 'R24', 'R25', 'R27', 'C7', 'C9'],
+    refs: ['R8', 'R23', 'R24', 'R25', 'R27', 'C7', 'C9', 'C12'],
     standards: [
       { name: '计分窗口', good: '腾空后的挥臂与击球', warn: '腾空偏小', bad: '未起跳的地面挥臂', note: '地面怎么挥臂都不评分；建议只针对空中击球窗口 [R27]' },
       { name: '起跳腾空', good: '有明显腾空', warn: '腾空偏小', bad: '几乎不起跳', note: '精英男质心跳高约 0.62 m 为上限参考 [R23]；本系统用髋部相对站立高度的上升近似' },
