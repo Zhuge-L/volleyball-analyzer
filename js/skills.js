@@ -261,7 +261,7 @@ const CAM = {
 function T(id, points) {
   return {
     video: `assets/teach/${id}.mp4`,
-    coachName: '林老师',
+    coachName: '梁老师',
     coachRole: '北京大学排球课 · 动作讲解',
     points,
   };
