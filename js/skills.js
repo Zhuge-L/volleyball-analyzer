@@ -277,8 +277,9 @@ function T(id, points) {
 }
 
 function bumpSkill(spec) {
-  const exam = spec.kind === 'self';
-  return {
+  const self = spec.kind === 'self';
+  const exam = self;
+  const result = {
     id: spec.id,
     group: 'bump',
     kind: spec.kind,
@@ -322,20 +323,37 @@ function bumpSkill(spec) {
       knee: kneeBump, cog: cogDrop, trunk: trunkBump,
     },
     combined: { title: '击球平台（动作峰值）', keys: ['platformExt', 'platformSym', 'platformTilt'] },
-    stdKeys: ['knee', 'cog', 'trunk'],
-    groups: [{ title: '下肢 · 迎球半蹲', until: 'trunk' }, { title: '躯干' }],
-    focusOrder: ['platformExt', 'knee', 'platformTilt', 'platformSym', 'cog', 'trunk'],
-    weights: { platform: 0.4, lower: 0.3, trunk: 0.15, timing: 0.15 },
-    reportMap: [
-      { name: '平台', wKey: 'platform', keys: ['platformExt', 'platformSym', 'platformTilt'] },
-      { name: '下肢', wKey: 'lower', keys: ['knee', 'cog'] },
-      { name: '躯干', wKey: 'trunk', keys: ['trunk'] },
-      { name: '时机', wKey: 'timing', timing: true },
-    ],
-    tableKeys: [
-      ['platformExt', '°'], ['platformSym', '°'], ['platformTilt', '°'],
-      ['knee', '°'], ['cog', '%'], ['trunk', '°'],
-    ],
+    stdKeys: self ? ['knee', 'cog'] : ['knee', 'cog', 'trunk'],
+    groups: self
+      ? [{ title: '下肢 · 原地垫球蹬伸' }]
+      : [{ title: '下肢 · 迎球半蹲', until: 'trunk' }, { title: '躯干' }],
+    focusOrder: self
+      ? ['platformExt', 'knee', 'platformTilt', 'platformSym', 'cog']
+      : ['platformExt', 'knee', 'platformTilt', 'platformSym', 'cog', 'trunk'],
+    weights: self
+      ? { platform: 0.5, lower: 0.32, timing: 0.18 }
+      : { platform: 0.4, lower: 0.3, trunk: 0.15, timing: 0.15 },
+    reportMap: self
+      ? [
+        { name: '平台', wKey: 'platform', keys: ['platformExt', 'platformSym', 'platformTilt'] },
+        { name: '下肢', wKey: 'lower', keys: ['knee', 'cog'] },
+        { name: '时机', wKey: 'timing', timing: true },
+      ]
+      : [
+        { name: '平台', wKey: 'platform', keys: ['platformExt', 'platformSym', 'platformTilt'] },
+        { name: '下肢', wKey: 'lower', keys: ['knee', 'cog'] },
+        { name: '躯干', wKey: 'trunk', keys: ['trunk'] },
+        { name: '时机', wKey: 'timing', timing: true },
+      ],
+    tableKeys: self
+      ? [
+        ['platformExt', '°'], ['platformSym', '°'], ['platformTilt', '°'],
+        ['knee', '°'], ['cog', '%'],
+      ]
+      : [
+        ['platformExt', '°'], ['platformSym', '°'], ['platformTilt', '°'],
+        ['knee', '°'], ['cog', '%'], ['trunk', '°'],
+      ],
     chart: { kneeBand: [100, 150], series: [{ key: 'cog', color: 'rgba(255,176,32,0.25)', fill: true }, { key: 'knee', color: '#00d4ff' }, { key: 'platformExt', color: '#a78bff' }] },
     phase: { ...PHASE_BASE, minVy: exam ? -0.55 : -0.75, minGap: exam ? 0.55 : 0.75 },
     idleHint: {
@@ -376,6 +394,8 @@ function bumpSkill(spec) {
       { name: '关键动作窗口', good: '前臂平台向上迎击的峰值帧', warn: '动作幅度较小或关键点短暂遮挡', bad: '未形成明确的垫球平台动作', note: '程序仅按人体姿态筛选关键帧；所选练习类型由上传项目确定。技术要点参见 [R2][C1]' },
     ],
   };
+  if (self) result.standards = result.standards.filter((row) => row.name !== '躯干前倾角');
+  return result;
 }
 
 function setSkill(spec) {

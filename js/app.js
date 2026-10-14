@@ -907,18 +907,6 @@ function drawOverlay(lm, metrics) {
       const color = tiltActive(metrics) && liveKey('platformTilt') ? lvColor(METRICS.platformTilt, metrics.platformTilt, 'platformTilt') : LEVEL_COLOR.none;
       badges.push({ x: wm.x * W, y: wm.y * H + 26, text: `平台 ${metrics.platformTilt}°`, color });
     }
-    if (phase === 'contact' && visible(lm, [15, 16], 0.3)) {
-      const wm = mid(lm[15], lm[16]);
-      octx.save();
-      octx.strokeStyle = '#ffd166';
-      octx.lineWidth = Math.max(3, W / 260);
-      octx.shadowBlur = 16;
-      octx.shadowColor = '#ffd166';
-      octx.beginPath();
-      octx.arc(wm.x * W, wm.y * H, Math.max(18, W / 40), 0, Math.PI * 2);
-      octx.stroke();
-      octx.restore();
-    }
     if (skill.overlay.cog && metrics.cog != null) {
       const hipY = mid(lm[23], lm[24]).y * H;
       const color = lvColor(METRICS.cog, metrics.cog, 'cog');
@@ -934,14 +922,6 @@ function drawOverlay(lm, metrics) {
       badges.push({ x: W * 0.04, y: hipY - 14, text: `髋部 ↓${metrics.cog}%`, color });
     }
   }
-  const phaseBadge = {
-    contact: ['⚡ 关键动作窗口（人体姿态）', '#ffd166'],
-    airborne: ['▲ 腾空段 · 仅此评挥臂', '#ffd166'],
-    ready: [skill.id === 'spike' ? '○ 助跑 / 地面段 · 挥臂不计分' : '○ 准备 / 移动段 · 不计分', LEVEL_COLOR.none],
-    standing: ['○ 站立段 · 不计分', LEVEL_COLOR.none],
-    none: null,
-  }[phase];
-  if (phaseBadge) badges.unshift({ x: 14, y: 30, text: phaseBadge[0], color: phaseBadge[1] });
   drawBadges(badges);
 }
 
@@ -1310,7 +1290,7 @@ function buildReport() {
     const wScore = rows.reduce((s, r) => {
       const lv = METRICS[key].evaluate(r.v).level;
       // 鼓励型评分：达标满分、提醒项保留大部分分值、明显问题仍给基础分。
-      return s + r.w * (lv === 'good' ? 1 : lv === 'warn' ? 0.74 : 0.36);
+      return s + r.w * (lv === 'good' ? 1 : lv === 'warn' ? 0.78 : 0.42);
     }, 0) / wSum;
     const goodPct = Math.round((rows.filter((r) => METRICS[key].evaluate(r.v).level === 'good').reduce((s, r) => s + r.w, 0) / wSum) * 100);
     return { avg, pct: wScore, goodPct };
@@ -1326,12 +1306,12 @@ function buildReport() {
   };
 
   const parts = skill.reportMap.map((p) => {
-    const val = p.timing ? (timing ? 0.55 + timing.pct * 0.45 : null) : avgPct(p.keys);
+    const val = p.timing ? (timing ? 0.62 + timing.pct * 0.38 : null) : avgPct(p.keys);
     return [p.name, skill.weights[p.wKey], val];
   }).filter(([, , p]) => p != null);
   const wSum = parts.reduce((s, [, w]) => s + w, 0) || 1;
   const rawScore = parts.reduce((s, [, w, p]) => s + w * p, 0) / wSum;
-  const score = Math.round(10 + 90 * rawScore);
+  const score = Math.round(15 + 85 * rawScore);
   const grade = score >= 85 ? '🏆 优秀' : score >= 70 ? '👍 良好' : score >= 55 ? '💪 继续加油' : '📌 需要重点纠正';
   const gradeText = score >= 85 ? '优秀' : score >= 70 ? '良好' : score >= 55 ? '继续加油' : '需要重点纠正';
 
