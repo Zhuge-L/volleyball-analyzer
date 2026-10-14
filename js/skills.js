@@ -177,12 +177,12 @@ const jumpRise = M('起跳腾空', '腾空', '%', [0, 25],
 );
 
 const PHASE_BASE = {
-  contactWindow: 0.14,
-  scoreWindow: 0.18,
+  contactWindow: 0.10,
+  scoreWindow: 0.10,
   minGap: 0.7,
   standKnee: 158,
   standCog: 6,
-  ballNear: 0.14,
+  ballNear: 0.10,
 };
 
 function upPeak(series, n, minVy) {
@@ -202,12 +202,28 @@ function heightPeak(series, n) {
   return null;
 }
 
-/** 近期见过球则必须「球靠近击球部位」才算触球；否则回退人体相位 */
-function ballGate(s, series, maxDist) {
-  const recent = series.some((x) => x.ball && s.t - x.t < 1.4);
-  if (!recent) return { ok: true, via: 'pose' };
-  const near = s.hitDist != null && s.hitDist <= maxDist;
-  return { ok: near, via: near ? 'ball' : 'miss' };
+/** 球到击球部位的距离先减小后增大，局部最小点才视为触球候选。 */
+function ballContactPeak(series, maxDist) {
+  const recent = series.slice(-8).filter((s) => s.ball && s.hitDist != null);
+  if (recent.length < 3) return null;
+  const s0 = recent[recent.length - 3];
+  const s1 = recent[recent.length - 2];
+  const s2 = recent[recent.length - 1];
+  if (s2.t - s0.t > 0.28 || s1.hitDist > maxDist) return null;
+  const closing = s0.hitDist - s1.hitDist;
+  const opening = s2.hitDist - s1.hitDist;
+  if (closing < 0.002 || opening < 0.001 || closing + opening < 0.006) return null;
+  return s1;
+}
+
+/** 有可靠球轨迹时只信球—人体接近事件；全程漏球时才用人体动作峰值回退。 */
+function contactCandidate(series, posePeak, maxDist) {
+  const ballPeak = ballContactPeak(series, maxDist);
+  if (ballPeak) return { s: ballPeak, via: 'ball' };
+  const now = series[series.length - 1]?.t ?? 0;
+  const hasRecentBall = series.some((x) => x.ball && now - x.t < 1.2);
+  if (hasRecentBall || !posePeak) return null;
+  return { s: posePeak, via: 'pose' };
 }
 
 function incomingToss(s, series) {
@@ -341,7 +357,7 @@ function bumpSkill(spec) {
       ['knee', '°'], ['cog', '%'], ['trunk', '°'],
     ],
     chart: { kneeBand: [100, 150], series: [{ key: 'cog', color: 'rgba(255,176,32,0.25)', fill: true }, { key: 'knee', color: '#00d4ff' }, { key: 'platformExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: exam ? -0.55 : -0.75, minGap: exam ? 0.55 : 0.75 },
+    phase: { ...PHASE_BASE, minVy: exam ? -0.55 : -0.75, minGap: exam ? 0.55 : 0.75, ballNear: 0.105 },
     idleHint: {
       platformExt: '仅统计球体接近前臂的触球窗口',
       platformSym: '仅统计触球窗口',
@@ -357,21 +373,20 @@ function bumpSkill(spec) {
     detect(series, lastT) {
       const n = series.length;
       const peak = upPeak(series, n, this.phase.minVy);
-      if (!peak) return false;
-      const s = peak.s1;
-      const gate = ballGate(s, series, this.phase.ballNear);
-      if (!gate.ok) return false;
+      const candidate = contactCandidate(series, peak && peak.s1, this.phase.ballNear);
+      if (!candidate) return false;
+      const { s } = candidate;
       if (spec.kind === 'toss' && s.ball) {
         /* 抛–垫：优先球从身外进入；自垫漏选时仍允许触球，但会在报告注明 */
       }
-      if (spec.kind === 'self' && s.ball && incomingToss(s, series) && gate.via === 'ball') {
+      if (spec.kind === 'self' && s.ball && incomingToss(s, series) && candidate.via === 'ball') {
         /* 自垫被抛球干扰时仍可计，由报告区分 */
       }
       const ok = s.belowShoulder
         && (s.knee == null || s.knee < 155)
         && (s.wristGap == null || s.wristGap < 0.28)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: gate.via, tossLike: incomingToss(s, series) } : false;
+      return ok ? { t: s.t, via: candidate.via, tossLike: incomingToss(s, series) } : false;
     },
     overlay: { elbowAs: 'platformExt', tilt: true, cog: true },
     timingText: spec.kind === 'self'
@@ -418,7 +433,7 @@ function setSkill(spec) {
     ],
     tableKeys: [['wristHigh', ''], ['handsGap', ''], ['setElbow', '°'], ['headLean', '°'], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'setElbow', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: -0.4, minGap: spec.kind === 'self' ? 0.55 : 0.75, ballNear: 0.12 },
+    phase: { ...PHASE_BASE, minVy: -0.4, minGap: spec.kind === 'self' ? 0.55 : 0.75, ballNear: 0.095 },
     idleHint: {
       wristHigh: '仅统计球体接近额前手型的触球窗口',
       handsGap: '仅统计触球窗口',
@@ -433,15 +448,15 @@ function setSkill(spec) {
     scoreSample(h) { return h.phase === 'contact'; },
     detect(series, lastT) {
       const n = series.length;
-      const s = heightPeak(series, n);
-      if (!s) return false;
-      const gate = ballGate(s, series, this.phase.ballNear);
-      if (!gate.ok) return false;
+      const posePeak = heightPeak(series, n);
+      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
+      if (!candidate) return false;
+      const { s } = candidate;
       const ok = s.aboveBrow
         && (s.wristGap == null || s.wristGap < 0.22)
         && (s.knee == null || s.knee < 170)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: gate.via, tossLike: incomingToss(s, series) } : false;
+      return ok ? { t: s.t, via: candidate.via, tossLike: incomingToss(s, series) } : false;
     },
     overlay: { elbowAs: 'setElbow', tilt: false, cog: false },
     timingText: spec.kind === 'self'
@@ -541,7 +556,7 @@ export const SKILLS = {
     ],
     tableKeys: [['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: -0.3, ballNear: 0.13 },
+    phase: { ...PHASE_BASE, minVy: -0.3, ballNear: 0.10 },
     idleHint: {
       elbowExt: '仅统计腹前触球窗口，练习空挥不计分',
       wristHigh: '仅统计触球窗口的击球点',
@@ -555,16 +570,15 @@ export const SKILLS = {
     detect(series, lastT) {
       const n = series.length;
       const peak = upPeak(series, n, this.phase.minVy);
-      if (!peak) return false;
-      const s = peak.s1;
-      const gate = ballGate(s, series, this.phase.ballNear);
-      if (!gate.ok) return false;
+      const candidate = contactCandidate(series, peak && peak.s1, this.phase.ballNear);
+      if (!candidate) return false;
+      const { s } = candidate;
       const ok = s.belowShoulder
         && !s.aboveHead
         && (s.wristHigh == null || s.wristHigh <= 12)
         && (s.knee == null || s.knee < 172)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: gate.via } : false;
+      return ok ? { t: s.t, via: candidate.via } : false;
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '抛球约 20–30 cm 的同时击球臂后摆，右脚蹬地、重心前移，全掌击打球的后下方',
@@ -610,7 +624,7 @@ export const SKILLS = {
     ],
     tableKeys: [['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.13 },
+    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.10 },
     idleHint: {
       elbowExt: '仅统计头上触球窗口，引臂/空挥不计分',
       wristHigh: '仅统计头上击球点',
@@ -623,14 +637,14 @@ export const SKILLS = {
     scoreSample(h) { return h.phase === 'contact'; },
     detect(series, lastT) {
       const n = series.length;
-      const s = heightPeak(series, n);
-      if (!s) return false;
-      const gate = ballGate(s, series, this.phase.ballNear);
-      if (!gate.ok) return false;
+      const posePeak = heightPeak(series, n);
+      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
+      if (!candidate) return false;
+      const { s } = candidate;
       const ok = s.aboveHead
         && (s.elbowMax == null || s.elbowMax >= 130)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: gate.via } : false;
+      return ok ? { t: s.t, via: candidate.via } : false;
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '抛球在击球肩前上方约 50–70 cm，蹬地转体，在头上最高点鞭打；飘球手腕固定、随挥短促',
@@ -675,7 +689,7 @@ export const SKILLS = {
     ],
     tableKeys: [['jumpRise', '%'], ['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [110, 130], series: [{ key: 'jumpRise', color: 'rgba(255,176,32,0.25)', fill: true }, { key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.15, airMin: 3 },
+    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.11, airMin: 3 },
     idleHint: {
       elbowExt: '地面挥臂不计分 · 只评腾空挥臂',
       wristHigh: '只评腾空头上击球点',
@@ -703,13 +717,13 @@ export const SKILLS = {
     },
     detect(series, lastT) {
       const n = series.length;
-      const s = heightPeak(series, n);
-      if (!s) return false;
+      const posePeak = heightPeak(series, n);
+      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
+      if (!candidate) return false;
+      const { s } = candidate;
       if (!s.airborne && !(s.jumpRise >= 3)) return false;
-      const gate = ballGate(s, series, this.phase.ballNear);
-      if (!gate.ok) return false;
       const ok = s.aboveHead && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: gate.via, airborne: true } : false;
+      return ok ? { t: s.t, via: candidate.via, airborne: true } : false;
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '在重心最高点稍后、开始下落时击球；地面挥臂再标准也不计入扣球',

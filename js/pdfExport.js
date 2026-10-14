@@ -6,6 +6,7 @@
  * ============================================================ */
 
 const PRINT_CSS = `
+  @page { size: A4; margin: 12mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
   body {
@@ -32,8 +33,10 @@ const PRINT_CSS = `
   th { background: #eef1f8; color: #3d4a66; font-weight: 600; font-size: 12px; }
   .issues { background: #fff8ee; border-left: 3px solid #e09b2d; padding: 10px 14px; margin: 12px 0; }
   .ok { background: #eefbf4; border-left: 3px solid #2aaa6a; padding: 10px 14px; margin: 12px 0; }
-  h2 { font-size: 16px; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #d8dee9; }
-  .section { margin-bottom: 22px; page-break-inside: avoid; }
+  h2 { font-size: 16px; margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 1px solid #d8dee9; break-after: avoid-page; }
+  .section { margin-bottom: 18px; break-inside: auto; page-break-inside: auto; }
+  .score-box, .issues, .ok, tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
   .summary-table td:nth-child(3) { font-weight: 700; }
   .foot { margin-top: 28px; padding-top: 12px; border-top: 1px solid #d8dee9; color: #8a94a8; font-size: 11px; }
   .missing { color: #a0a8b8; font-style: italic; }
@@ -44,6 +47,7 @@ const PRINT_CSS = `
   @media print {
     .print-tip { display: none !important; }
     body { padding: 0; }
+    .cover { margin-bottom: 14px; padding-bottom: 10px; }
   }
 `;
 
@@ -250,7 +254,12 @@ function openPrintWindow(html, title) {
   w.document.write(html);
   w.document.close();
   w.document.title = title.replace(/\.pdf$/i, '');
-  const trigger = () => { try { w.focus(); w.print(); } catch { /* ignore */ } };
+  let printed = false;
+  const trigger = () => {
+    if (printed) return;
+    printed = true;
+    try { w.focus(); w.print(); } catch { /* ignore */ }
+  };
   if (w.document.readyState === 'complete') setTimeout(trigger, 300);
   else w.addEventListener('load', () => setTimeout(trigger, 300));
   setTimeout(trigger, 1200); // 兜底

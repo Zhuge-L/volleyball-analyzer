@@ -793,7 +793,7 @@ function computeMetrics(lm) {
   if (currentBall) {
     m.ballX = currentBall.x;
     m.ballY = currentBall.y;
-    m.hitDist = ballHitDistance(currentBall, lm);
+    m.hitDist = ballHitDistance(currentBall, lm, skill.group);
     m.ballOutside = ballOutsideBody(currentBall, lm);
   }
 
@@ -821,9 +821,9 @@ function trackAction(lm, m) {
     airborne: !!m.airborne,
     wristGap: visible(lm, [15, 16], 0.3) ? Math.hypot(lm[15].x - lm[16].x, lm[15].y - lm[16].y) : null,
     wristHigh: m.wristHigh, elbowMax: m.elbowExt,
-    ball: currentBall ? { x: currentBall.x, y: currentBall.y } : null,
-    hitDist: currentBall ? ballHitDistance(currentBall, lm) : null,
-    ballOutside: currentBall ? ballOutsideBody(currentBall, lm) : false,
+    ball: currentBall && !currentBall.stale ? { x: currentBall.x, y: currentBall.y } : null,
+    hitDist: currentBall && !currentBall.stale ? ballHitDistance(currentBall, lm, skill.group) : null,
+    ballOutside: currentBall && !currentBall.stale ? ballOutsideBody(currentBall, lm) : false,
   });
   while (motionSeries.length && t - motionSeries[0].t > 3) motionSeries.shift();
 
@@ -955,11 +955,11 @@ function drawOverlay(lm, metrics) {
       badges.push({ x: W * 0.04, y: hipY - 14, text: `髋部 ↓${metrics.cog}%`, color });
     }
   }
-  const ballTag = currentBall && !currentBall.stale ? ' · 已检出球' : (ballSeen > 8 ? '' : ' · 寻球中');
+  const ballTag = currentBall && !currentBall.stale ? ' · 正在跟踪球' : (ballSeen > 8 ? '' : ' · 寻球中');
   const phaseBadge = {
     contact: [`⚡ 触球窗口${currentBall ? '（球体）' : '（人体相位）'}`, '#ffd166'],
     airborne: ['▲ 腾空段 · 仅此评挥臂', '#ffd166'],
-    ready: [skill.id === 'spike' ? '○ 地面段 · 挥臂不计分' : `● 动作段${ballTag}`, skill.id === 'spike' ? LEVEL_COLOR.none : LEVEL_COLOR.good],
+    ready: [skill.id === 'spike' ? '○ 地面段 · 挥臂不计分' : `○ 准备 / 跟踪段 · 不计分${ballTag}`, LEVEL_COLOR.none],
     standing: ['○ 站立段 · 不计分', LEVEL_COLOR.none],
     none: null,
   }[phase];
@@ -1275,13 +1275,21 @@ window.addEventListener('resize', () => {
 btnReport.addEventListener('click', buildReport);
 
 function pickScoredSamples() {
-  if (skill.scoreSample) {
-    const windowed = history.filter((h) => skill.scoreSample(h));
-    if (windowed.length >= 3) return { samples: windowed, mode: 'window' };
+  // 每次事件只取时间上最近的一帧，避免把准备、移动和随挥混入动作评分。
+  const picked = [];
+  const used = new Set();
+  for (const event of contactEvents) {
+    const nearest = history
+      .filter((h) => Math.abs(h.t - event.t) <= PHASE.scoreWindow)
+      .sort((a, b) => Math.abs(a.t - event.t) - Math.abs(b.t - event.t))[0];
+    if (nearest && !used.has(nearest)) {
+      used.add(nearest);
+      // 事件通常在局部最小点后的下一帧才确认，旧样本原本可能仍标成 ready。
+      picked.push({ ...nearest, phase: event.airborne ? 'airborne' : 'contact', contactVia: event.via });
+    }
   }
-  const contactSamples = history.filter((h) => h.phase === 'contact' || h.phase === 'airborne');
-  if (contactEvents.length >= 1 && contactSamples.length >= 3) return { samples: contactSamples, mode: 'contact' };
-  return { samples: history.filter((h) => h.phase !== 'standing'), mode: 'active' };
+  if (picked.length) return { samples: picked, mode: 'contact-frame' };
+  return { samples: [], mode: 'none' };
 }
 
 function evalTiming() {
@@ -1300,24 +1308,29 @@ function evalTiming() {
 
 function buildReport() {
   const scored = pickScoredSamples();
-  if (scored.samples.length < 3) {
-    toast('数据太少：请先播放视频进行分析，再生成报告');
+  if (!scored.samples.length) {
+    toast('尚未确认触球瞬间：请完整播放视频，并确保球与击球部位清晰可见');
     return;
   }
 
   const stat = (key) => {
     if (!METRICS[key]) return null;
-    const pool = skill.scoreKey
+    const pool = skill.scoreKey && key === 'knee'
+      // 扣球膝角仍取起跳前缓冲期；其余技术指标只取实际击球帧。
       ? history.filter((h) => h[key] != null && skill.scoreKey(key, h))
-      : scored.samples.filter((h) => h[key] != null && (!skill.metricLive || skill.metricLive(key, h, h.phase)));
+      : scored.samples.filter((h) => h[key] != null
+        && (!skill.scoreKey || skill.scoreKey(key, h))
+        && (!skill.metricLive || skill.metricLive(key, h, h.phase)));
     const rows = pool
-      .map((h) => ({ v: h[key], w: clamp(h.conf && h.conf[key] != null ? h.conf[key] : 0.8, 0.4, 1) }));
+      .map((h) => ({ v: h[key], w: clamp(h.conf && h.conf[key] != null ? h.conf[key] : 0.8, 0.4, 1) }))
+      .filter((r) => r.w >= 0.48);
     if (!rows.length) return null;
     const wSum = rows.reduce((s, r) => s + r.w, 0);
     const avg = Math.round(rows.reduce((s, r) => s + r.v * r.w, 0) / wSum);
     const wScore = rows.reduce((s, r) => {
       const lv = METRICS[key].evaluate(r.v).level;
-      return s + r.w * (lv === 'good' ? 1 : lv === 'warn' ? 0.5 : 0);
+      // 鼓励型评分：达标满分、提醒项保留大部分分值、明显问题仍给基础分。
+      return s + r.w * (lv === 'good' ? 1 : lv === 'warn' ? 0.74 : 0.36);
     }, 0) / wSum;
     const goodPct = Math.round((rows.filter((r) => METRICS[key].evaluate(r.v).level === 'good').reduce((s, r) => s + r.w, 0) / wSum) * 100);
     return { avg, pct: wScore, goodPct };
@@ -1333,29 +1346,28 @@ function buildReport() {
   };
 
   const parts = skill.reportMap.map((p) => {
-    const val = p.timing ? (timing ? timing.pct : null) : avgPct(p.keys);
+    const val = p.timing ? (timing ? 0.55 + timing.pct * 0.45 : null) : avgPct(p.keys);
     return [p.name, skill.weights[p.wKey], val];
   }).filter(([, , p]) => p != null);
   const wSum = parts.reduce((s, [, w]) => s + w, 0) || 1;
-  const score = Math.round((100 * parts.reduce((s, [, w, p]) => s + w * p, 0)) / wSum);
+  const rawScore = parts.reduce((s, [, w, p]) => s + w * p, 0) / wSum;
+  const score = Math.round(10 + 90 * rawScore);
   const grade = score >= 85 ? '🏆 优秀' : score >= 70 ? '👍 良好' : score >= 55 ? '💪 继续加油' : '📌 需要重点纠正';
   const gradeText = score >= 85 ? '优秀' : score >= 70 ? '良好' : score >= 55 ? '继续加油' : '需要重点纠正';
 
   const ballHits = contactEvents.filter((e) => e.via === 'ball').length;
   const tossLike = contactEvents.filter((e) => e.tossLike).length;
   let modeNote;
-  if (scored.mode === 'window' || scored.mode === 'contact') {
+  if (scored.mode === 'contact-frame') {
     const via = ballHits ? `其中 ${ballHits} 次由球体靠近击球部位确认` : '本次未稳定检出球体，已回退人体相位';
     const win = skill.id === 'spike' ? '腾空击球窗口' : '触球窗口';
-    modeNote = `基于 ${contactEvents.length} 次${win}（${via}；±${Math.round(PHASE.scoreWindow * 1000)}ms）。站立与窗口外动作不计分。`;
+    modeNote = `基于 ${contactEvents.length} 次${win}，每次只取距离触球事件最近的一帧（${via}）。准备、移动与随挥均不计入动作分。`;
     if (skill.kind === 'toss' && ballHits && tossLike === 0) {
       modeNote += ' 轨迹更像自垫/自传：考试项建议拍摄他人抛球后的接垫/传球。';
     }
     if (skill.kind === 'self' && tossLike >= Math.max(1, contactEvents.length - 1)) {
       modeNote += ' 球多次从身外进入，更接近抛–垫/抛–传。';
     }
-  } else {
-    modeNote = '未识别到明确的触球/腾空窗口，按动作段（已剔除站立）统计，结果仅供参考。';
   }
 
   const issues = [];
