@@ -323,6 +323,7 @@ function bumpSkill(spec) {
       knee: kneeBump, cog: cogDrop, trunk: trunkBump,
     },
     combined: { title: '击球平台（动作峰值）', keys: ['platformExt', 'platformSym', 'platformTilt'] },
+    requiredMetrics: ['platformExt', 'platformSym', 'platformTilt'],
     stdKeys: self ? ['knee', 'cog'] : ['knee', 'cog', 'trunk'],
     groups: self
       ? [{ title: '下肢 · 原地垫球蹬伸' }]
@@ -373,9 +374,12 @@ function bumpSkill(spec) {
       const peak = upPeak(series, n, this.phase.minVy);
       if (!peak) return false;
       const s = peak.s1;
-      const ok = s.belowShoulder
+      const ok = s.bothWrists
+        && s.bothBelowShoulder
+        && s.armCount === 2
+        && s.elbowMax >= 140
         && (s.knee == null || s.knee < 155)
-        && (s.wristGap == null || s.wristGap < 0.28)
+        && s.wristGap != null && s.wristGap < 0.22
         && s.t - lastT >= this.phase.minGap;
       return ok ? { t: s.t, via: 'pose' } : false;
     },
@@ -414,6 +418,7 @@ function setSkill(spec) {
       wristHigh: wristSet, handsGap, setElbow, knee: kneeLight, trunk: trunkUpright, headLean,
     },
     combined: null,
+    requiredMetrics: ['wristHigh', 'handsGap', 'setElbow'],
     stdKeys: ['wristHigh', 'handsGap', 'setElbow', 'knee', 'trunk', 'headLean'],
     groups: [{ title: '额前手型（动作峰值）', until: 'knee' }, { title: '下肢与躯干' }],
     focusOrder: ['wristHigh', 'handsGap', 'setElbow', 'headLean', 'knee', 'trunk'],
@@ -444,8 +449,12 @@ function setSkill(spec) {
       const posePeak = heightPeak(series, n);
       if (!posePeak) return false;
       const s = posePeak;
-      const ok = s.aboveBrow
-        && (s.wristGap == null || s.wristGap < 0.22)
+      const ok = s.bothWrists
+        && s.bothAboveBrow
+        && s.armCount === 2
+        && s.wristGap != null && s.wristGap < 0.20
+        && s.elbowMean != null && s.elbowMean >= 70 && s.elbowMean <= 145
+        && (s.armAsym == null || s.armAsym <= 35)
         && (s.knee == null || s.knee < 170)
         && s.t - lastT >= this.phase.minGap;
       return ok ? { t: s.t, via: 'pose' } : false;
@@ -536,6 +545,7 @@ export const SKILLS = {
       elbowExt, wristHigh: underWrist, knee: kneeLight, trunk: trunkBump,
     },
     combined: null,
+    requiredMetrics: ['elbowExt', 'wristHigh'],
     stdKeys: ['elbowExt', 'wristHigh', 'knee', 'trunk'],
     groups: [{ title: '挥臂与腹前击球点（动作峰值）', until: 'knee' }, { title: '下肢与躯干' }],
     focusOrder: ['wristHigh', 'elbowExt', 'knee', 'trunk'],
@@ -566,7 +576,11 @@ export const SKILLS = {
       const s = peak.s1;
       const ok = s.belowShoulder
         && !s.aboveHead
-        && (s.wristHigh == null || s.wristHigh <= 12)
+        && !s.airborne
+        && (s.jumpRise == null || s.jumpRise < 3)
+        && s.elbowMax != null && s.elbowMax >= 140
+        && (s.wristHigh == null || s.wristHigh <= 8)
+        && !(s.bothWrists && s.wristGap != null && s.wristGap < 0.18)
         && (s.knee == null || s.knee < 172)
         && s.t - lastT >= this.phase.minGap;
       return ok ? { t: s.t, via: 'pose' } : false;
@@ -603,6 +617,7 @@ export const SKILLS = {
       elbowExt, wristHigh, knee: kneeLight, trunk: trunkBump,
     },
     combined: null,
+    requiredMetrics: ['elbowExt', 'wristHigh'],
     stdKeys: ['elbowExt', 'wristHigh', 'knee', 'trunk'],
     groups: [{ title: '头上击球窗口', until: 'knee' }, { title: '下肢与躯干' }],
     focusOrder: ['wristHigh', 'elbowExt', 'knee', 'trunk'],
@@ -632,7 +647,10 @@ export const SKILLS = {
       if (!posePeak) return false;
       const s = posePeak;
       const ok = s.aboveHead
-        && (s.elbowMax == null || s.elbowMax >= 130)
+        && !s.airborne
+        && (s.jumpRise == null || s.jumpRise < 3)
+        && s.elbowMax != null && s.elbowMax >= 130
+        && (!s.bothWrists || (s.wristGap != null && s.wristGap > 0.14))
         && s.t - lastT >= this.phase.minGap;
       return ok ? { t: s.t, via: 'pose' } : false;
     },
@@ -667,6 +685,7 @@ export const SKILLS = {
       jumpRise, elbowExt, wristHigh, knee: kneeSpike, trunk: trunkBump,
     },
     combined: null,
+    requiredMetrics: ['jumpRise', 'elbowExt', 'wristHigh'],
     stdKeys: ['jumpRise', 'elbowExt', 'wristHigh', 'knee', 'trunk'],
     groups: [{ title: '腾空击球（唯一计分窗口）', until: 'knee' }, { title: '起跳前下肢' }],
     focusOrder: ['jumpRise', 'wristHigh', 'elbowExt', 'knee', 'trunk'],

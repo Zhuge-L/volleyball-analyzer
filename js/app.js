@@ -804,6 +804,7 @@ function trackAction(lm, m) {
   const t = video.currentTime;
   const wrists = [lm[15], lm[16]].filter((p) => (p.visibility ?? 1) >= 0.4);
   if (!wrists.length || !visible(lm, [11, 12], 0.3)) return;
+  const bothWrists = visible(lm, [15, 16], 0.35);
   const wy = wrists.reduce((s, p) => s + p.y, 0) / wrists.length;
   const sh = mid(lm[11], lm[12]);
   const noseY = lm[0] ? lm[0].y : sh.y - 0.12;
@@ -812,10 +813,16 @@ function trackAction(lm, m) {
     belowShoulder: wy > sh.y,
     aboveHead: wy < noseY,
     aboveBrow: wy < noseY + 0.05,
+    bothWrists,
+    bothBelowShoulder: bothWrists && lm[15].y > sh.y && lm[16].y > sh.y,
+    bothAboveBrow: bothWrists && lm[15].y < noseY + 0.05 && lm[16].y < noseY + 0.05,
     knee: m.knee, cog: m.cog, jumpRise: m.jumpRise,
     airborne: !!m.airborne,
     wristGap: visible(lm, [15, 16], 0.3) ? Math.hypot(lm[15].x - lm[16].x, lm[15].y - lm[16].y) : null,
     wristHigh: m.wristHigh, elbowMax: m.elbowExt,
+    elbowMean: m.setElbow,
+    armCount: Number(m.elbowL != null) + Number(m.elbowR != null),
+    armAsym: m.elbowL != null && m.elbowR != null ? Math.abs(m.elbowL - m.elbowR) : null,
   });
   while (motionSeries.length && t - motionSeries[0].t > 3) motionSeries.shift();
 
@@ -1264,7 +1271,34 @@ function evalTiming() {
   return judged ? { ok, judged, pct: ok / judged } : null;
 }
 
+function actionMismatchHint() {
+  // 这里只拦截特征非常明确的跨项目视频；不把边界动作强行分类。
+  const spikeLike = history.some((h) =>
+    h.jumpRise >= 6
+    && h.aboveHead
+    && h.elbowExt >= 115
+    && (h.handsGap == null || h.handsGap > 22));
+  if (skill.id !== 'spike' && spikeLike) {
+    return '检测到明显的腾空单臂头上挥臂，视频更像扣球；请切换到“扣球”项目后重新分析。';
+  }
+
+  const overheadSingleArm = history.filter((h) =>
+    !h.airborne
+    && h.aboveHead
+    && h.elbowExt >= 130
+    && (h.handsGap == null || h.handsGap > 18)).length;
+  if (skill.group === 'set' && overheadSingleArm >= 2) {
+    return '检测到单臂头上挥臂，动作不符合正面双手传球；请确认所选项目与视频一致。';
+  }
+  return null;
+}
+
 function buildReport() {
+  const mismatch = actionMismatchHint();
+  if (mismatch) {
+    toast(mismatch);
+    return;
+  }
   const scored = pickScoredSamples();
   if (!scored.samples.length) {
     toast(skill.id === 'spike'
@@ -1298,6 +1332,11 @@ function buildReport() {
 
   const stats = {};
   for (const [key] of skill.tableKeys) stats[key] = stat(key);
+  const missingCore = (skill.requiredMetrics || []).filter((key) => !stats[key]);
+  if (missingCore.length) {
+    toast(`无法生成报告：${missingCore.map((key) => METRICS[key]?.label || key).join('、')}未形成有效数据。请确认动作类型正确且关键部位清晰入镜。`);
+    return;
+  }
   const timing = evalTiming();
 
   const avgPct = (keys) => {
