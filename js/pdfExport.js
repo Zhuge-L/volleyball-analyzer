@@ -92,7 +92,7 @@ function skillSectionHtml(r) {
       <div class="meta">
         <span>时间：${esc(r.dateStr || '—')}</span>
         <span>视频时长：${esc(r.duration || '—')}</span>
-        <span>触球窗口：${esc(r.contacts ?? '—')} 次</span>
+        <span>关键动作：${esc(r.contacts ?? '—')} 次</span>
       </div>
       <div class="score-box">
         <div class="score-num">${esc(r.score)}</div>
@@ -132,7 +132,7 @@ function buildSingleDoc(r) {
     <span>导出时间：${esc(r.dateStr || '')}</span>
   </div>
   ${skillSectionHtml(r)}
-  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分作用于触球窗口或扣球腾空窗口；发球/垫球/传球优先使用球体检测。</div>`);
+  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分只作用于人体关键动作窗口或扣球腾空挥臂窗口。</div>`);
 }
 
 function buildCombinedDoc(student, reports, summaryRows) {
@@ -179,7 +179,7 @@ function buildCombinedDoc(student, reports, summaryRows) {
   </section>
   <h2>分项明细</h2>
   ${reports.filter(Boolean).map((r) => skillSectionHtml(r)).join('') || '<p class="missing">暂无已保存的项目报告。</p>'}
-  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分作用于触球窗口或扣球腾空窗口；发球/垫球/传球优先使用球体检测。</div>`);
+  <div class="foot">本报告由 VolleySense 在浏览器本地生成，视频未上传服务器。评分只作用于人体关键动作窗口或扣球腾空挥臂窗口。</div>`);
 }
 
 /* ---------------- Markdown 组装 ---------------- */
@@ -192,7 +192,7 @@ function reportToMd(r) {
     `- 姓名：${r.name || '（未填写）'}　学号：${r.sid || '（未填写）'}`,
     `- 身高：${r.height ? `${r.height} cm` : '未填'}`,
     `- 时间：${r.dateStr || '—'}`,
-    `- 视频时长：${r.duration || '—'}　触球窗口：${r.contacts ?? '—'} 次`,
+    `- 视频时长：${r.duration || '—'}　关键动作：${r.contacts ?? '—'} 次`,
     `- 评分方式：${r.modeNote || '—'}`,
     '',
     `## 综合评分：${r.score} 分（${r.gradeText || ''}）`,

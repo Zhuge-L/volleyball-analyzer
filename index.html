@@ -25,7 +25,7 @@
       <p class="login-crest">北京大学 · 公共体育</p>
       <h1>排球课程动作测评</h1>
       <p class="login-lead">
-        用课堂或课后拍摄的视频，对照垫球、传球、发球和扣球的技术要求进行自评。程序只在触球或腾空等关键阶段记录动作，人体姿态与球体检测均在浏览器本地完成，视频不会上传到服务器。
+        用课堂或课后拍摄的视频，对照垫球、传球、发球和扣球的技术要求进行自评。程序根据人体姿态筛选动作峰值或腾空等关键阶段，分析均在浏览器本地完成，视频不会上传到服务器。
       </p>
       <form id="login-form" class="login-form" autocomplete="on">
         <div class="field">
@@ -48,7 +48,7 @@
         <p class="login-err" id="login-err" hidden>请填写姓名、学号和身高后再进入。</p>
         <button class="btn btn-primary btn-block" type="submit">进入课堂</button>
       </form>
-      <p class="login-foot">评分窗口：触球瞬间 / 扣球腾空挥臂 · 下手发球为正面下手 · 视频仅保存在本机</p>
+      <p class="login-foot">评分窗口：人体动作峰值 / 扣球腾空挥臂 · 下手发球为正面下手 · 视频仅保存在本机</p>
     </div>
   </section>
 
@@ -73,7 +73,7 @@
         <p class="eyebrow">PEKING UNIVERSITY · VOLLEYBALL</p>
         <h1>选择一项考试技术<br /><span class="grad-text">上传视频，对照标准自评</span></h1>
         <p class="lede">
-          垫球和传球分别提供基础练习与课程考试项目；发球包括上手发球和正面下手发球。请按项目页给出的机位、距离和镜头高度拍摄。程序会识别人体与排球，并在触球或腾空等关键阶段完成测评。
+          垫球和传球分别提供基础练习与课程考试项目；发球包括上手发球和正面下手发球。请按项目页给出的机位、距离和镜头高度拍摄。程序只识别人体姿态，并在动作峰值或腾空等关键阶段完成测评。
         </p>
       </div>
       <div class="skill-grid" id="skill-grid"></div>
@@ -126,8 +126,8 @@
         </div>
 
         <div class="notice-card">
-          <b>关于「球」与评分窗口：</b>
-          发球、垫球、传球会尝试检出画面中的排球，用球体靠近手臂/手型的时刻标记触球。扣球只测量腾空后的挥臂与击球点，地面挥臂不计分。若未检出球体，才回退为人体动作相位估计。
+          <b>关于动作识别与评分窗口：</b>
+          系统不再识别排球，只根据人体关键点判断动作。垫球、传球和发球取相应手臂或手型的动作峰值；扣球检测起跳腾空后的头上挥臂，地面挥臂不计分。
         </div>
 
         <div class="history-card" id="history-card" hidden>
@@ -181,11 +181,11 @@
               <span><i class="dot dot-knee"></i>膝角</span>
               <span><i class="dot dot-elbow"></i>上肢</span>
               <span><i class="dot dot-cog"></i>髋部/腾空</span>
-              <span><i class="dot dot-contact"></i>触球窗口</span>
+              <span><i class="dot dot-contact"></i>关键动作窗口</span>
             </div>
           </div>
           <canvas id="chart" height="170"></canvas>
-          <p class="chart-hint" id="chart-hint">▲ = 触球窗口（优先球体检测）· 点击曲线可跳转画面</p>
+          <p class="chart-hint" id="chart-hint">▲ = 人体关键动作窗口 · 点击曲线可跳转画面</p>
         </div>
       </div>
 
@@ -203,7 +203,7 @@
       <div id="standards-table"></div>
       <p class="modal-note">
         区间来自排球教学标准与生物力学文献，已按公体课初学者下调；精英 3D 动捕数值只作上限参考。
-        评分只作用于触球窗口或扣球腾空窗口；低置信度帧会自动降权。不承诺肩旋转角度与绝对球速。
+        评分只作用于人体关键动作窗口或扣球腾空窗口；低置信度帧会自动降权。不承诺肩旋转角度与绝对球速。
         击球点等长度反馈在填写身高并站直标定后显示为垂直方向厘米估算（鼻–踝 ≈ 0.897×身高）。
       </p>
     </div>

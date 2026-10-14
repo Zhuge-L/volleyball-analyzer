@@ -1,18 +1,17 @@
 /* ============================================================
- * 姿态 + 球体识别引擎：MediaPipe PoseLandmarker / ObjectDetector
+ * 人体姿态识别引擎：MediaPipe PoseLandmarker
  * 模型与运行时均从 CDN 加载，无需打包，可直接部署到 GitHub Pages
  * ============================================================ */
 
-import { FilesetResolver, PoseLandmarker, ObjectDetector } from
+import { FilesetResolver, PoseLandmarker } from
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/vision_bundle.mjs';
 
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm';
 const POSE_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
-const BALL_URL = 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite';
 
 /**
- * 创建姿态识别器与球体检测器（优先 GPU，失败回退 CPU）
- * @returns {Promise<{ pose: PoseLandmarker, ballDetector: ObjectDetector|null }>}
+ * 创建姿态识别器（优先 GPU，失败回退 CPU）。
+ * @returns {Promise<{ pose: PoseLandmarker }>}
  */
 export async function createVisionEngines(onProgress) {
   const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
@@ -24,13 +23,6 @@ export async function createVisionEngines(onProgress) {
     minPosePresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
-  const ballOpts = (delegate) => ({
-    baseOptions: { modelAssetPath: BALL_URL, delegate },
-    runningMode: 'VIDEO',
-    scoreThreshold: 0.28,
-    maxResults: 5,
-  });
-
   onProgress?.('正在加载人体姿态模型…');
   let pose;
   try {
@@ -40,20 +32,7 @@ export async function createVisionEngines(onProgress) {
     pose = await PoseLandmarker.createFromOptions(fileset, poseOpts('CPU'));
   }
 
-  onProgress?.('正在加载球体检测模型…');
-  let ballDetector = null;
-  try {
-    ballDetector = await ObjectDetector.createFromOptions(fileset, ballOpts('GPU'));
-  } catch (e1) {
-    try {
-      ballDetector = await ObjectDetector.createFromOptions(fileset, ballOpts('CPU'));
-    } catch (e2) {
-      console.warn('球体检测模型加载失败，将使用颜色回退', e2);
-      ballDetector = null;
-    }
-  }
-
-  return { pose, ballDetector };
+  return { pose };
 }
 
 /** @deprecated 兼容旧调用 */

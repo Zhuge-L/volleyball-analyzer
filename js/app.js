@@ -1,18 +1,14 @@
 /* ============================================================
  * VolleySense · 北京大学排球课程
- * 登录 → 选择考试项目 → 上传视频 → 姿态+球体分析 → 报告
+ * 登录 → 选择考试项目 → 上传视频 → 人体动作分析 → 报告
  *
- * 触球窗口优先用球体接近击球部位判定；扣球只评腾空挥臂。
+ * 关键动作窗口由人体姿态相位判定；扣球只评腾空挥臂。
  * ============================================================ */
 
 import { createVisionEngines, BONES, ANGLE_JOINTS } from './poseEngine.js';
 import { SKILL_LIST, SKILL_GROUPS, getSkill } from './skills.js';
 import { citeList } from './refs.js';
 import { angleABC, mid, trunkLean, visible, forearmTilt } from './angles.js';
-import {
-  pickBallFromDetections, detectBallByColor, smoothBall, resetBallTrack,
-  ballHitDistance, ballOutsideBody,
-} from './ballDetect.js';
 import { exportSingleReportPdf, exportCombinedReportPdf, exportSingleReportMd, exportCombinedReportMd } from './pdfExport.js';
 import {
   setStature, resetVideoScale, updateStandingScale, formatScaled, calibCaption, scaleState,
@@ -50,7 +46,6 @@ const historyCard = $('#history-card');
 const historyList = $('#history-list');
 
 let landmarker = null;
-let ballDetector = null;
 let videoURL = null;
 let history = [];
 let contactEvents = [];
@@ -64,10 +59,11 @@ let lastSampleT = -1;
 let rafId = 0;
 let savedHistoryLen = 0;
 let lastReport = null;
+let lastPoseLandmarks = null;
+let lastPoseMetrics = null;
+let lastPoseTs = 0;
 let student = { name: '', sid: '', height: null };
 let skill = getSkill('tossBump');
-let currentBall = null;
-let ballSeen = 0;
 const usingRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
 
 const LEVEL_COLOR = { good: '#2ee6a8', warn: '#ffb020', bad: '#ff5470', none: '#93a0bd' };
@@ -249,7 +245,7 @@ function selectSkill(id) {
     <p><b>取景：</b>${esc(cam.framing)}</p>
     <p><b>避免：</b>${esc(cam.avoid)}</p>
     <p class="cam-cite">${esc(cam.cite)}</p>`;
-  $('#chart-hint').textContent = '绿色色带 = 膝角参考区间 · ▲ = 触球窗口（优先球体靠近击球部位；未检出球则回退人体相位）· 点击跳转';
+  $('#chart-hint').textContent = '绿色色带 = 膝角参考区间 · ▲ = 人体关键动作窗口 · 点击跳转';
   $('#std-title').textContent = `${skill.examName} · 评判标准`;
   buildStandardsTable(skill.id);
   buildDashboard();
@@ -573,9 +569,9 @@ function resetAnalysisState() {
   lastSampleT = -1;
   savedHistoryLen = 0;
   lastReport = null;
-  currentBall = null;
-  ballSeen = 0;
-  resetBallTrack();
+  lastPoseLandmarks = null;
+  lastPoseMetrics = null;
+  lastPoseTs = 0;
   resetVideoScale();
 }
 
@@ -598,13 +594,12 @@ function ensureModel() {
   if (landmarker) return Promise.resolve();
   if (modelPromise) return modelPromise;
   stageLoading.hidden = false;
-  loadingText.textContent = '正在下载姿态与球体模型（首次约 15MB）…';
+  loadingText.textContent = '正在下载人体姿态模型（首次加载需要一点时间）…';
   modelPromise = createVisionEngines((msg) => { loadingText.textContent = msg; })
-    .then(({ pose, ballDetector: det }) => {
+    .then(({ pose }) => {
       landmarker = pose;
-      ballDetector = det;
       stageLoading.hidden = true;
-      loadingText.textContent = ballDetector ? '姿态 + 球体模型就绪' : '姿态就绪（球体将用颜色回退）';
+      loadingText.textContent = '人体姿态模型就绪';
       detectOnce();
     })
     .catch((err) => {
@@ -626,7 +621,14 @@ video.addEventListener('ended', () => { btnPlay.textContent = '▶ 重新播放'
 speedSel.addEventListener('change', () => (video.playbackRate = parseFloat(speedSel.value)));
 video.addEventListener('loadedmetadata', () => { syncOverlaySize(); updateTimeLabel(); });
 video.addEventListener('timeupdate', updateTimeLabel);
-video.addEventListener('seeking', () => { motionSeries = []; smooth = {}; standStreak = 0; });
+video.addEventListener('seeking', () => {
+  motionSeries = [];
+  smooth = {};
+  standStreak = 0;
+  lastPoseLandmarks = null;
+  lastPoseMetrics = null;
+  lastPoseTs = 0;
+});
 video.addEventListener('seeked', () => { if (video.paused) detectOnce(); });
 
 function syncOverlaySize() {
@@ -669,29 +671,23 @@ function runDetection() {
   const ts = performance.now();
   const result = landmarker.detectForVideo(video, ts);
   const lm = result.landmarks && result.landmarks[0];
-  currentBall = detectBall(ts);
+  if (!lm && lastPoseLandmarks && ts - lastPoseTs <= 450) {
+    // 快速动作和腾空最高点容易偶发漏掉一两帧；短暂沿用最近一次显示，
+    // 但不重复采样或计分，避免把同一姿态伪造成多个事件。
+    drawOverlay(lastPoseLandmarks, lastPoseMetrics);
+    updateDashboard(lastPoseMetrics);
+    return;
+  }
   const metrics = computeMetrics(lm);
+  if (lm && metrics) {
+    lastPoseLandmarks = lm;
+    lastPoseMetrics = metrics;
+    lastPoseTs = ts;
+  }
   phase = metrics ? classifyPhase(metrics) : 'none';
   drawOverlay(lm, metrics);
   updateDashboard(metrics);
   sampleHistory(metrics);
-}
-
-function detectBall(ts) {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  let hit = null;
-  if (ballDetector) {
-    try {
-      const det = ballDetector.detectForVideo(video, ts);
-      hit = pickBallFromDetections(det.detections, vw, vh);
-    } catch (e) {
-      /* ignore frame errors */
-    }
-  }
-  if (!hit) hit = detectBallByColor(video);
-  const smoothed = smoothBall(hit, 0.08);
-  if (smoothed && !smoothed.stale) ballSeen += 1;
-  return smoothed;
 }
 
 /* ============================================================
@@ -749,14 +745,20 @@ function computeMetrics(lm) {
     m.conf.headLean = minVis(0, 11, 12, 23, 24);
   }
 
-  if (visible(lm, [23, 24, 27, 28])) {
+  if (visible(lm, [23, 24], 0.3)) {
     const hip = mid(lm[23], lm[24]);
-    const legLen = mid(lm[27], lm[28]).y - hip.y;
-    if (legLen > 0.05) {
-      cogBaseline = Math.max(cogBaseline, legLen);
-      m.cog = Math.round(((cogBaseline - legLen) / cogBaseline) * 100);
-      m.conf.cog = minVis(23, 24, 27, 28);
+    if (visible(lm, [27, 28], 0.3)) {
+      const legLen = mid(lm[27], lm[28]).y - hip.y;
+      if (legLen > 0.05) {
+        cogBaseline = Math.max(cogBaseline, legLen);
+        m.cog = Math.round(((cogBaseline - legLen) / cogBaseline) * 100);
+        m.conf.cog = minVis(23, 24, 27, 28);
+      }
     }
+    // 视频可能从助跑或屈膝开始，不能只等“完全站直”才建立地面基线。
+    // 先用最初/最低的髋部位置初始化，随后在站立帧缓慢校准。
+    if (!hipStandY) hipStandY = hip.y;
+    else if (hip.y > hipStandY) hipStandY = hipStandY * 0.8 + hip.y * 0.2;
     if (m.knee != null && m.knee >= PHASE.standKnee && (m.cog == null || m.cog < PHASE.standCog)) {
       hipStandY = hipStandY ? hipStandY * 0.85 + hip.y * 0.15 : hip.y;
       if (visible(lm, [0, 27, 28], 0.35)) {
@@ -790,13 +792,6 @@ function computeMetrics(lm) {
 
   trackAction(lm, m);
 
-  if (currentBall) {
-    m.ballX = currentBall.x;
-    m.ballY = currentBall.y;
-    m.hitDist = ballHitDistance(currentBall, lm, skill.group);
-    m.ballOutside = ballOutsideBody(currentBall, lm);
-  }
-
   for (const k of Object.keys(METRICS)) {
     if (m[k] == null) continue;
     smooth[k] = smooth[k] == null ? m[k] : Math.round(smooth[k] * 0.65 + m[k] * 0.35);
@@ -821,9 +816,6 @@ function trackAction(lm, m) {
     airborne: !!m.airborne,
     wristGap: visible(lm, [15, 16], 0.3) ? Math.hypot(lm[15].x - lm[16].x, lm[15].y - lm[16].y) : null,
     wristHigh: m.wristHigh, elbowMax: m.elbowExt,
-    ball: currentBall && !currentBall.stale ? { x: currentBall.x, y: currentBall.y } : null,
-    hitDist: currentBall && !currentBall.stale ? ballHitDistance(currentBall, lm, skill.group) : null,
-    ballOutside: currentBall && !currentBall.stale ? ballOutsideBody(currentBall, lm) : false,
   });
   while (motionSeries.length && t - motionSeries[0].t > 3) motionSeries.shift();
 
@@ -833,8 +825,8 @@ function trackAction(lm, m) {
     const ev = typeof hit === 'object' ? hit : { t: motionSeries[motionSeries.length - 2].t, via: 'pose' };
     contactEvents.push({
       t: ev.t ?? motionSeries[motionSeries.length - 2].t,
+      confirmedAt: t,
       via: ev.via || 'pose',
-      tossLike: !!ev.tossLike,
       airborne: !!ev.airborne,
     });
   }
@@ -842,7 +834,8 @@ function trackAction(lm, m) {
 
 function classifyPhase(m) {
   const t = video.currentTime;
-  if (contactEvents.some((e) => Math.abs(e.t - t) <= PHASE.contactWindow)) {
+  if (contactEvents.some((e) => Math.abs(e.t - t) <= PHASE.contactWindow
+    || (e.confirmedAt != null && t >= e.confirmedAt && t - e.confirmedAt <= PHASE.contactWindow))) {
     standStreak = 0;
     return 'contact';
   }
@@ -885,20 +878,6 @@ function drawOverlay(lm, metrics) {
     octx.beginPath();
     octx.arc(lm[idx].x * W, lm[idx].y * H, Math.max(3.5, W / 220), 0, Math.PI * 2);
     octx.fill();
-  }
-
-  if (currentBall) {
-    const bx = currentBall.x * W, by = currentBall.y * H;
-    const br = Math.max(10, (currentBall.r || 0.04) * Math.min(W, H));
-    octx.save();
-    octx.strokeStyle = currentBall.stale ? 'rgba(255, 209, 102, 0.45)' : '#ffd166';
-    octx.lineWidth = Math.max(3, W / 280);
-    octx.shadowBlur = 14;
-    octx.shadowColor = '#ffd166';
-    octx.beginPath();
-    octx.arc(bx, by, br, 0, Math.PI * 2);
-    octx.stroke();
-    octx.restore();
   }
 
   const badges = [];
@@ -955,11 +934,10 @@ function drawOverlay(lm, metrics) {
       badges.push({ x: W * 0.04, y: hipY - 14, text: `髋部 ↓${metrics.cog}%`, color });
     }
   }
-  const ballTag = currentBall && !currentBall.stale ? ' · 正在跟踪球' : (ballSeen > 8 ? '' : ' · 寻球中');
   const phaseBadge = {
-    contact: [`⚡ 触球窗口${currentBall ? '（球体）' : '（人体相位）'}`, '#ffd166'],
+    contact: ['⚡ 关键动作窗口（人体姿态）', '#ffd166'],
     airborne: ['▲ 腾空段 · 仅此评挥臂', '#ffd166'],
-    ready: [skill.id === 'spike' ? '○ 地面段 · 挥臂不计分' : `○ 准备 / 跟踪段 · 不计分${ballTag}`, LEVEL_COLOR.none],
+    ready: [skill.id === 'spike' ? '○ 助跑 / 地面段 · 挥臂不计分' : '○ 准备 / 移动段 · 不计分', LEVEL_COLOR.none],
     standing: ['○ 站立段 · 不计分', LEVEL_COLOR.none],
     none: null,
   }[phase];
@@ -1090,7 +1068,7 @@ function updateDashboard(m) {
       if (!inactive) subResults.push({ key, level, v });
     }
     if (!subResults.length) {
-      setCardLevel(pEls, 'none', standing ? '站立·不计分' : (phase === 'contact' ? '未检测到' : '等待触球窗口'), skill.idleHint?.platformExt || '');
+      setCardLevel(pEls, 'none', standing ? '站立·不计分' : (phase === 'contact' ? '未检测到' : '等待动作峰值'), skill.idleHint?.platformExt || '');
       pEls.lvState.shown = 'none';
     } else if (standing) {
       setCardLevel(pEls, 'none', '站立·不计分', '');
@@ -1128,7 +1106,7 @@ function updateFocus(m, standing) {
   }
   if (standing) {
     card.className = 'focus-card';
-    text.textContent = '站立段不计分 —— 正在用身高做垂直 1D 标定，随后只在触球/腾空窗口评分';
+    text.textContent = '站立段不计分 —— 正在用身高做垂直 1D 标定，随后只在动作峰值/腾空窗口评分';
     list.innerHTML = `<li class="good">${esc(calibCaption())}。发球、垫球、传球会尝试检测排球；扣球只评腾空挥臂。</li>`;
     return;
   }
@@ -1149,8 +1127,8 @@ function updateFocus(m, standing) {
   }
   if (!issues.length) {
     card.className = 'focus-card lv-good';
-    text.textContent = phase === 'contact' ? '⚡ 触球窗口：姿态良好，保持！' : (phase === 'airborne' ? '▲ 腾空窗口姿态良好' : '等待触球窗口…');
-    list.innerHTML = `<li class="good">${phase === 'contact' || phase === 'airborne' ? '当前评分窗口内姿态良好。' : '窗口外动作仅作参考，建议看触球/腾空瞬间。'}</li>`;
+    text.textContent = phase === 'contact' ? '⚡ 关键动作窗口：姿态良好，保持！' : (phase === 'airborne' ? '▲ 腾空窗口姿态良好' : '等待关键动作…');
+    list.innerHTML = `<li class="good">${phase === 'contact' || phase === 'airborne' ? '当前评分窗口内姿态良好。' : '窗口外动作仅作参考，建议查看动作峰值或腾空瞬间。'}</li>`;
     return;
   }
   issues.sort((a, b) => LV_RANK[b.level] - LV_RANK[a.level] || skill.focusOrder.indexOf(a.key) - skill.focusOrder.indexOf(b.key));
@@ -1309,7 +1287,9 @@ function evalTiming() {
 function buildReport() {
   const scored = pickScoredSamples();
   if (!scored.samples.length) {
-    toast('尚未确认触球瞬间：请完整播放视频，并确保球与击球部位清晰可见');
+    toast(skill.id === 'spike'
+      ? '尚未确认腾空挥臂：请完整播放助跑、起跳和头上挥臂过程'
+      : '尚未确认关键动作：请完整播放视频，并确保全身清晰入镜');
     return;
   }
 
@@ -1355,19 +1335,10 @@ function buildReport() {
   const grade = score >= 85 ? '🏆 优秀' : score >= 70 ? '👍 良好' : score >= 55 ? '💪 继续加油' : '📌 需要重点纠正';
   const gradeText = score >= 85 ? '优秀' : score >= 70 ? '良好' : score >= 55 ? '继续加油' : '需要重点纠正';
 
-  const ballHits = contactEvents.filter((e) => e.via === 'ball').length;
-  const tossLike = contactEvents.filter((e) => e.tossLike).length;
   let modeNote;
   if (scored.mode === 'contact-frame') {
-    const via = ballHits ? `其中 ${ballHits} 次由球体靠近击球部位确认` : '本次未稳定检出球体，已回退人体相位';
-    const win = skill.id === 'spike' ? '腾空击球窗口' : '触球窗口';
-    modeNote = `基于 ${contactEvents.length} 次${win}，每次只取距离触球事件最近的一帧（${via}）。准备、移动与随挥均不计入动作分。`;
-    if (skill.kind === 'toss' && ballHits && tossLike === 0) {
-      modeNote += ' 轨迹更像自垫/自传：考试项建议拍摄他人抛球后的接垫/传球。';
-    }
-    if (skill.kind === 'self' && tossLike >= Math.max(1, contactEvents.length - 1)) {
-      modeNote += ' 球多次从身外进入，更接近抛–垫/抛–传。';
-    }
+    const win = skill.id === 'spike' ? '腾空挥臂窗口' : '关键动作窗口';
+    modeNote = `基于人体姿态识别到的 ${contactEvents.length} 次${win}，每次只取动作峰值最近的一帧。准备、移动与随挥均不计入动作分。`;
   }
 
   const issues = [];
@@ -1436,7 +1407,7 @@ function buildReport() {
       <span class="meta-chip">🎓 ${esc(student.sid)}</span>
       <span class="meta-chip">📏 ${student.height ? `${student.height} cm` : '未填身高'}</span>
       <span class="meta-chip">🕐 ${dateStr}</span>
-      <span class="meta-chip">触球 ${contactEvents.length} 次${ballHits ? ` · 检球 ${ballHits}` : ''}</span>
+      <span class="meta-chip">关键动作 ${contactEvents.length} 次</span>
     </div>
     <div class="report-score">
       <div class="score-num">${score}</div>

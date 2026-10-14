@@ -2,7 +2,7 @@
  * 北京大学排球课程 · 考试项目与评判标准
  *
  * 评分只发生在「技术窗口」内：
- *   垫/传/发：球体接近击球部位的触球瞬间（无球则回退人体相位）
+ *   垫/传/发：根据手臂、手型和下肢的动作峰值确定关键帧
  *   扣球：仅腾空段挥臂与击球点；地面挥臂不计分
  *
  * 下手发球 = 正面下手发球（面对球网），不是侧面下手发球。
@@ -182,53 +182,33 @@ const PHASE_BASE = {
   minGap: 0.7,
   standKnee: 158,
   standCog: 6,
-  ballNear: 0.10,
 };
 
 function upPeak(series, n, minVy) {
-  if (n < 4) return null;
-  const s0 = series[n - 3], s1 = series[n - 2], s2 = series[n - 1];
-  const vPrev = (s0.y - series[n - 4].y) / Math.max(1e-3, s0.t - series[n - 4].t);
-  const v1 = (s1.y - s0.y) / Math.max(1e-3, s1.t - s0.t);
-  const v2 = (s2.y - s1.y) / Math.max(1e-3, s2.t - s1.t);
-  if (v1 <= minVy && v1 <= vPrev && v1 <= v2) return { s1, v1 };
+  if (n < 3) return null;
+  const recent = series.slice(-7);
+  let best = null;
+  for (let i = 1; i < recent.length; i++) {
+    const v = (recent[i].y - recent[i - 1].y) / Math.max(1e-3, recent[i].t - recent[i - 1].t);
+    if (!best || v < best.v1) best = { s1: recent[i], v1: v };
+  }
+  const last = recent[recent.length - 1];
+  const prev = recent[recent.length - 2];
+  const currentV = (last.y - prev.y) / Math.max(1e-3, last.t - prev.t);
+  if (best && best.v1 <= minVy && currentV >= best.v1 + 0.08 && last.t - best.s1.t <= 0.35) return best;
   return null;
 }
 
 function heightPeak(series, n) {
-  if (n < 4) return null;
-  const s0 = series[n - 3], s1 = series[n - 2], s2 = series[n - 1];
-  if (s1.y <= s0.y && s1.y <= s2.y) return s1;
-  return null;
-}
-
-/** 球到击球部位的距离先减小后增大，局部最小点才视为触球候选。 */
-function ballContactPeak(series, maxDist) {
-  const recent = series.slice(-8).filter((s) => s.ball && s.hitDist != null);
-  if (recent.length < 3) return null;
-  const s0 = recent[recent.length - 3];
-  const s1 = recent[recent.length - 2];
-  const s2 = recent[recent.length - 1];
-  if (s2.t - s0.t > 0.28 || s1.hitDist > maxDist) return null;
-  const closing = s0.hitDist - s1.hitDist;
-  const opening = s2.hitDist - s1.hitDist;
-  if (closing < 0.002 || opening < 0.001 || closing + opening < 0.006) return null;
-  return s1;
-}
-
-/** 有可靠球轨迹时只信球—人体接近事件；全程漏球时才用人体动作峰值回退。 */
-function contactCandidate(series, posePeak, maxDist) {
-  const ballPeak = ballContactPeak(series, maxDist);
-  if (ballPeak) return { s: ballPeak, via: 'ball' };
-  const now = series[series.length - 1]?.t ?? 0;
-  const hasRecentBall = series.some((x) => x.ball && now - x.t < 1.2);
-  if (hasRecentBall || !posePeak) return null;
-  return { s: posePeak, via: 'pose' };
-}
-
-function incomingToss(s, series) {
-  const win = series.filter((x) => x.ball && s.t - x.t <= 0.55 && s.t - x.t >= 0.12);
-  return win.some((x) => x.ballOutside);
+  if (n < 3) return null;
+  // 允许动作最高点恰好遇到一两帧姿态丢失：在近期窗口内找最高的手腕位置，
+  // 等到开始下降或短暂停留后再确认。
+  const recent = series.slice(-7);
+  const best = recent.reduce((a, s) => (s.y < a.y ? s : a), recent[0]);
+  const last = recent[recent.length - 1];
+  const elapsed = last.t - best.t;
+  const descending = last.y - best.y >= 0.002;
+  return elapsed >= 0.03 && elapsed <= 0.35 && (descending || elapsed >= 0.12) ? best : null;
 }
 
 const CAM = {
@@ -306,7 +286,7 @@ function bumpSkill(spec) {
     name: spec.name,
     examName: spec.examName,
     blurb: spec.blurb,
-    needsBall: true,
+    needsBall: false,
     camera: CAM.bump,
     teach: spec.teach,
     metrics: {
@@ -341,7 +321,7 @@ function bumpSkill(spec) {
       ),
       knee: kneeBump, cog: cogDrop, trunk: trunkBump,
     },
-    combined: { title: '击球平台（触球窗口）', keys: ['platformExt', 'platformSym', 'platformTilt'] },
+    combined: { title: '击球平台（动作峰值）', keys: ['platformExt', 'platformSym', 'platformTilt'] },
     stdKeys: ['knee', 'cog', 'trunk'],
     groups: [{ title: '下肢 · 迎球半蹲', until: 'trunk' }, { title: '躯干' }],
     focusOrder: ['platformExt', 'knee', 'platformTilt', 'platformSym', 'cog', 'trunk'],
@@ -357,12 +337,12 @@ function bumpSkill(spec) {
       ['knee', '°'], ['cog', '%'], ['trunk', '°'],
     ],
     chart: { kneeBand: [100, 150], series: [{ key: 'cog', color: 'rgba(255,176,32,0.25)', fill: true }, { key: 'knee', color: '#00d4ff' }, { key: 'platformExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: exam ? -0.55 : -0.75, minGap: exam ? 0.55 : 0.75, ballNear: 0.105 },
+    phase: { ...PHASE_BASE, minVy: exam ? -0.55 : -0.75, minGap: exam ? 0.55 : 0.75 },
     idleHint: {
-      platformExt: '仅统计球体接近前臂的触球窗口',
-      platformSym: '仅统计触球窗口',
-      platformTilt: '仅统计触球窗口',
-      knee: '仅统计迎球/触球窗口，站立等待不计分',
+      platformExt: '仅统计前臂平台向上迎击的动作峰值',
+      platformSym: '仅统计垫球动作峰值',
+      platformTilt: '仅统计垫球动作峰值',
+      knee: '仅统计迎球与蹬伸阶段，站立等待不计分',
     },
     metricLive(key, m, ph) {
       if (ph === 'standing' || ph === 'none') return false;
@@ -373,20 +353,13 @@ function bumpSkill(spec) {
     detect(series, lastT) {
       const n = series.length;
       const peak = upPeak(series, n, this.phase.minVy);
-      const candidate = contactCandidate(series, peak && peak.s1, this.phase.ballNear);
-      if (!candidate) return false;
-      const { s } = candidate;
-      if (spec.kind === 'toss' && s.ball) {
-        /* 抛–垫：优先球从身外进入；自垫漏选时仍允许触球，但会在报告注明 */
-      }
-      if (spec.kind === 'self' && s.ball && incomingToss(s, series) && candidate.via === 'ball') {
-        /* 自垫被抛球干扰时仍可计，由报告区分 */
-      }
+      if (!peak) return false;
+      const s = peak.s1;
       const ok = s.belowShoulder
         && (s.knee == null || s.knee < 155)
         && (s.wristGap == null || s.wristGap < 0.28)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: candidate.via, tossLike: incomingToss(s, series) } : false;
+      return ok ? { t: s.t, via: 'pose' } : false;
     },
     overlay: { elbowAs: 'platformExt', tilt: true, cog: true },
     timingText: spec.kind === 'self'
@@ -400,7 +373,7 @@ function bumpSkill(spec) {
       { name: '膝关节夹角', good: '100° ~ 150°（公体半蹲）', warn: '90°~100° 或 150°~165°', bad: '< 90° 或 > 165°', note: '课堂半蹲迎球。文献跨步垫球最大膝屈可达约 60°，只作专项上限参考 [R1]' },
       { name: '髋部下降幅度', good: '≥ 12%', warn: '6% ~ 12%', bad: '< 6%', note: '以髋部高度近似重心' },
       { name: '躯干前倾角', good: '15° ~ 35°（相对竖直）', warn: '8°~15° 或 35°~42°', bad: '< 8° 或 > 42°', note: '对应文献肩髋连线与水平夹角约 55°–72° [R1]' },
-      { name: '触球窗口', good: '球靠近前臂时计分', warn: '未检出球则回退人体相位', bad: '无球空挥不作为考试垫球', note: spec.kind === 'self' ? '自垫：球在体前上下，连续触球 [C1]' : '抛–垫：球由身外进入后再触球；发力约在球至肩平面上方 5–10 cm [R2]' },
+      { name: '关键动作窗口', good: '前臂平台向上迎击的峰值帧', warn: '动作幅度较小或关键点短暂遮挡', bad: '未形成明确的垫球平台动作', note: '程序仅按人体姿态筛选关键帧；所选练习类型由上传项目确定。技术要点参见 [R2][C1]' },
     ],
   };
 }
@@ -414,7 +387,7 @@ function setSkill(spec) {
     name: spec.name,
     examName: spec.examName,
     blurb: spec.blurb,
-    needsBall: true,
+    needsBall: false,
     camera: CAM.set,
     teach: spec.teach,
     metrics: {
@@ -422,7 +395,7 @@ function setSkill(spec) {
     },
     combined: null,
     stdKeys: ['wristHigh', 'handsGap', 'setElbow', 'knee', 'trunk', 'headLean'],
-    groups: [{ title: '额前手型（触球窗口）', until: 'knee' }, { title: '下肢与躯干' }],
+    groups: [{ title: '额前手型（动作峰值）', until: 'knee' }, { title: '下肢与躯干' }],
     focusOrder: ['wristHigh', 'handsGap', 'setElbow', 'headLean', 'knee', 'trunk'],
     weights: { hands: 0.45, lower: 0.25, trunk: 0.15, timing: 0.15 },
     reportMap: [
@@ -433,12 +406,12 @@ function setSkill(spec) {
     ],
     tableKeys: [['wristHigh', ''], ['handsGap', ''], ['setElbow', '°'], ['headLean', '°'], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'setElbow', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: -0.4, minGap: spec.kind === 'self' ? 0.55 : 0.75, ballNear: 0.095 },
+    phase: { ...PHASE_BASE, minVy: -0.4, minGap: spec.kind === 'self' ? 0.55 : 0.75 },
     idleHint: {
-      wristHigh: '仅统计球体接近额前手型的触球窗口',
-      handsGap: '仅统计触球窗口',
-      setElbow: '仅统计触球窗口',
-      headLean: '仅统计触球窗口；建议以前斜或侧面机位拍摄',
+      wristHigh: '仅统计额前双手上送的动作峰值',
+      handsGap: '仅统计传球动作峰值',
+      setElbow: '仅统计传球动作峰值',
+      headLean: '仅统计传球动作峰值；建议以前斜或侧面机位拍摄',
     },
     metricLive(key, m, ph) {
       if (ph === 'standing' || ph === 'none') return false;
@@ -449,14 +422,13 @@ function setSkill(spec) {
     detect(series, lastT) {
       const n = series.length;
       const posePeak = heightPeak(series, n);
-      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
-      if (!candidate) return false;
-      const { s } = candidate;
+      if (!posePeak) return false;
+      const s = posePeak;
       const ok = s.aboveBrow
         && (s.wristGap == null || s.wristGap < 0.22)
         && (s.knee == null || s.knee < 170)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: candidate.via, tossLike: incomingToss(s, series) } : false;
+      return ok ? { t: s.t, via: 'pose' } : false;
     },
     overlay: { elbowAs: 'setElbow', tilt: false, cog: false },
     timingText: spec.kind === 'self'
@@ -470,7 +442,7 @@ function setSkill(spec) {
       { name: '膝关节夹角', good: '130° ~ 165°', warn: '120°~130° 或 165°~175°', bad: '< 120° 或 > 175°', note: '微屈膝，不要深蹲 [R42]' },
       { name: '躯干前倾角', good: '≤ 18°', warn: '18° ~ 28°', bad: '> 28°', note: '传球上体应较直，利于向上送球' },
       { name: '头颈偏离竖直角', good: '≤ 25°', warn: '25° ~ 35°', bad: '> 35°', note: '正面传球研究在触球时的头部姿态约为偏离竖直 18°，且动作中头部变化约 2° [R43]。本项以鼻—肩中点相对躯干轴线作单目筛查；受机位影响，不等同于医学颈椎角度。高校教学资料将上体后仰列为常见错误 [R44]' },
-      { name: '触球窗口', good: '球靠近额前双手时计分', warn: '未检出球则回退人体相位', bad: '无球比划手型不作为传球考试', note: spec.kind === 'self' ? '自传为基础练习' : '抛–传为考试内容：他人抛球后正面双手传出' },
+      { name: '关键动作窗口', good: '额前双手上送至最高点的关键帧', warn: '动作幅度较小或关键点短暂遮挡', bad: '未形成明确的额前传球动作', note: '程序仅按人体姿态筛选关键帧；自传或抛–传由上传项目确定。' },
     ],
   };
 }
@@ -533,7 +505,7 @@ export const SKILLS = {
     name: '正面下手发球',
     examName: '发球 · 正面下手发球',
     blurb: '考试口径是正面下手发球：面对球网，两脚前后开立，腹前抛球后以肩为轴钟摆挥臂，击球点在腹前。不是侧面下手发球。',
-    needsBall: true,
+    needsBall: false,
     camera: CAM.underhand,
     teach: T('underhand', [
       '必须是正面下手：面对球网，两脚前后开立，不是体侧摆臂。',
@@ -545,7 +517,7 @@ export const SKILLS = {
     },
     combined: null,
     stdKeys: ['elbowExt', 'wristHigh', 'knee', 'trunk'],
-    groups: [{ title: '挥臂与腹前击球点（触球窗口）', until: 'knee' }, { title: '下肢与躯干' }],
+    groups: [{ title: '挥臂与腹前击球点（动作峰值）', until: 'knee' }, { title: '下肢与躯干' }],
     focusOrder: ['wristHigh', 'elbowExt', 'knee', 'trunk'],
     weights: { arm: 0.4, lower: 0.3, trunk: 0.15, timing: 0.15 },
     reportMap: [
@@ -556,10 +528,10 @@ export const SKILLS = {
     ],
     tableKeys: [['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minVy: -0.3, ballNear: 0.10 },
+    phase: { ...PHASE_BASE, minVy: -0.3 },
     idleHint: {
-      elbowExt: '仅统计腹前触球窗口，练习空挥不计分',
-      wristHigh: '仅统计触球窗口的击球点',
+      elbowExt: '仅统计腹前直臂前摆的动作峰值',
+      wristHigh: '仅统计动作峰值的击球点高度',
     },
     metricLive(key, m, ph) {
       if (ph === 'standing' || ph === 'none') return false;
@@ -570,15 +542,14 @@ export const SKILLS = {
     detect(series, lastT) {
       const n = series.length;
       const peak = upPeak(series, n, this.phase.minVy);
-      const candidate = contactCandidate(series, peak && peak.s1, this.phase.ballNear);
-      if (!candidate) return false;
-      const { s } = candidate;
+      if (!peak) return false;
+      const s = peak.s1;
       const ok = s.belowShoulder
         && !s.aboveHead
         && (s.wristHigh == null || s.wristHigh <= 12)
         && (s.knee == null || s.knee < 172)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: candidate.via } : false;
+      return ok ? { t: s.t, via: 'pose' } : false;
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '抛球约 20–30 cm 的同时击球臂后摆，右脚蹬地、重心前移，全掌击打球的后下方',
@@ -589,7 +560,7 @@ export const SKILLS = {
       { name: '击球点高度', good: '腹前 / 腰腹以下', warn: '略高', bad: '接近肩以上', note: '击球点在腹前，全掌或掌根击打球的后下方 [R16]' },
       { name: '膝关节夹角', good: '130° ~ 165°', warn: '偏蹲或偏直', bad: '过蹲或过直', note: '两膝微屈，重心由后脚移至前脚' },
       { name: '躯干前倾角', good: '15° ~ 35°', warn: '略直或前倾过大', bad: '失控', note: '上体稍前倾；出手角教学参考约 40°–50° [R18]' },
-      { name: '触球窗口', good: '球靠近击球手时计分', warn: '未检出球则回退', bad: '无球空挥', note: '下手发球定量生物力学文献少，以国内课程口径为主 [R19][R20]' },
+      { name: '关键动作窗口', good: '腹前直臂前摆的速度峰值', warn: '挥臂幅度较小', bad: '未形成明确的下手发球挥臂', note: '程序按人体动作相位确定关键帧；下手发球定量生物力学文献少，以国内课程口径为主 [R19][R20]' },
     ],
   },
 
@@ -600,12 +571,12 @@ export const SKILLS = {
     icon: '🏐',
     name: '上手发球',
     examName: '发球 · 上手发球',
-    blurb: '头上最高点击球、击球臂伸展、抛球在击球肩前上方。挥臂只在头上触球窗口计分，地面引臂不计分。',
-    needsBall: true,
+    blurb: '头上最高点击球、击球臂伸展、抛球在击球肩前上方。程序只评头上挥臂的动作峰值，地面引臂不计分。',
+    needsBall: false,
     camera: CAM.overhand,
     teach: T('overhand', [
       '抛球在击球肩前上方，教学高度大约 50–70 cm，要稳、少旋转。',
-      '系统只评头上触球窗口：引臂、空挥都不计分。',
+      '系统只评头上挥臂达到最高点的关键动作窗口，地面引臂不计分。',
       '击球瞬间手臂伸展；飘球手腕固定、随挥短促，不要带上旋。',
     ]),
     metrics: {
@@ -624,9 +595,9 @@ export const SKILLS = {
     ],
     tableKeys: [['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.10 },
+    phase: { ...PHASE_BASE, minGap: 0.9 },
     idleHint: {
-      elbowExt: '仅统计头上触球窗口，引臂/空挥不计分',
+      elbowExt: '仅统计头上挥臂峰值，地面引臂不计分',
       wristHigh: '仅统计头上击球点',
     },
     metricLive(key, m, ph) {
@@ -638,13 +609,12 @@ export const SKILLS = {
     detect(series, lastT) {
       const n = series.length;
       const posePeak = heightPeak(series, n);
-      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
-      if (!candidate) return false;
-      const { s } = candidate;
+      if (!posePeak) return false;
+      const s = posePeak;
       const ok = s.aboveHead
         && (s.elbowMax == null || s.elbowMax >= 130)
         && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: candidate.via } : false;
+      return ok ? { t: s.t, via: 'pose' } : false;
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '抛球在击球肩前上方约 50–70 cm，蹬地转体，在头上最高点鞭打；飘球手腕固定、随挥短促',
@@ -654,7 +624,7 @@ export const SKILLS = {
       { name: '击球点高度', good: '头上方最高点', warn: '略低', bad: '肩附近或更低', note: '抛球位于击球肩前上方，教学抛高约 50–70 cm [R7]' },
       { name: '膝关节夹角', good: '130° ~ 165°', warn: '偏蹲或偏直', bad: '过蹲或完全伸直', note: '微屈后蹬伸' },
       { name: '躯干前倾角', good: '15° ~ 35°', warn: '偏直或前倾过大', bad: '失控', note: '击球时上体跟进' },
-      { name: '触球窗口', good: '球靠近头上手掌时计分', warn: '未检出球则回退', bad: '无球挥臂', note: '不评判肩内旋角速度（单目 2D 不可靠）[C9][R8]' },
+      { name: '关键动作窗口', good: '头上挥臂达到最高点的关键帧', warn: '挥臂峰值不明显', bad: '未形成明确的头上发球挥臂', note: '程序按人体动作相位确定关键帧；不评判肩内旋角速度（单目 2D 不可靠）[C9][R8]' },
     ],
   },
 
@@ -666,7 +636,7 @@ export const SKILLS = {
     name: '扣球',
     examName: '四号位扣球',
     blurb: '只评价腾空段：助跑起跳后，在空中挥臂、头上击球。地面上怎么挥臂都不计分，建议也只针对空中击球窗口。',
-    needsBall: true,
+    needsBall: false,
     camera: CAM.spike,
     teach: T('spike', [
       '地面挥臂不计分。先助跑起跳，只看腾空后的挥臂和击球点。',
@@ -689,7 +659,7 @@ export const SKILLS = {
     ],
     tableKeys: [['jumpRise', '%'], ['elbowExt', '°'], ['wristHigh', ''], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [110, 130], series: [{ key: 'jumpRise', color: 'rgba(255,176,32,0.25)', fill: true }, { key: 'knee', color: '#00d4ff' }, { key: 'elbowExt', color: '#a78bff' }] },
-    phase: { ...PHASE_BASE, minGap: 0.9, ballNear: 0.11, airMin: 3 },
+    phase: { ...PHASE_BASE, minGap: 0.9, airMin: 3 },
     idleHint: {
       elbowExt: '地面挥臂不计分 · 只评腾空挥臂',
       wristHigh: '只评腾空头上击球点',
@@ -716,14 +686,17 @@ export const SKILLS = {
       return this.scoreSample(h);
     },
     detect(series, lastT) {
-      const n = series.length;
-      const posePeak = heightPeak(series, n);
-      const candidate = contactCandidate(series, posePeak, this.phase.ballNear);
-      if (!candidate) return false;
-      const { s } = candidate;
-      if (!s.airborne && !(s.jumpRise >= 3)) return false;
-      const ok = s.aboveHead && s.t - lastT >= this.phase.minGap;
-      return ok ? { t: s.t, via: candidate.via, airborne: true } : false;
+      // 扣球不再等待球体或严格的手腕局部峰值：一旦确认腾空并出现头上挥臂，
+      // 就把该帧作为进攻动作窗口。这样腾空最高点偶发丢帧也不会漏掉整次扣球。
+      const recent = series.slice(-10).filter((s) =>
+        (s.airborne || s.jumpRise >= this.phase.airMin)
+        && s.aboveHead
+        && (s.elbowMax == null || s.elbowMax >= 115));
+      if (!recent.length) return false;
+      const s = recent.reduce((a, x) => ((x.jumpRise || 0) > (a.jumpRise || 0) ? x : a));
+      const now = series[series.length - 1]?.t ?? s.t;
+      if (now - s.t > 0.35 || s.t - lastT < this.phase.minGap) return false;
+      return { t: s.t, via: 'pose', airborne: true };
     },
     overlay: { elbowAs: 'elbowExt', tilt: false, cog: false },
     timingText: '在重心最高点稍后、开始下落时击球；地面挥臂再标准也不计入扣球',
