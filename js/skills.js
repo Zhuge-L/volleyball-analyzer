@@ -84,6 +84,21 @@ const trunkUpright = M('躯干前倾角', '躯干', '°', [0, 60],
   (v) => (v > 18 ? `上体再立起约 ${v - 18}°` : null),
 );
 
+/**
+ * 鼻—肩中点相对躯干轴线的偏离角，仅作单目姿态筛查。
+ * Ridgway & Wilkerson 的正面传球触球均值约为相对水平 72°（偏离竖直约 18°），
+ * 标准差约 11°；据此把 25° 设为课堂提醒线，而不是医学颈椎活动度界值。
+ */
+const headLean = M('头颈偏离竖直角', '抬头', '°', [0, 55],
+  [{ from: 0, to: 25, level: 'good' }, { from: 25, to: 35, level: 'warn' }],
+  (v) => {
+    if (v <= 25) return { level: 'good', text: '头颈位置稳定，视线可跟随来球，上体没有明显后仰' };
+    if (v <= 35) return { level: 'warn', text: '抬头幅度略大，收下颌并让身体移动到球下' };
+    return { level: 'bad', text: '头颈后仰明显：不要用后仰去找球，应先移动到位再在额前触球' };
+  },
+  (v) => (v > 25 ? `头颈偏离竖直再减小约 ${v - 25}°` : null),
+);
+
 const elbowExt = M('击球臂伸直度', '伸直', '°', [60, 180],
   [{ from: 145, to: 180, level: 'good' }, { from: 130, to: 145, level: 'warn' }],
   (v) => {
@@ -261,8 +276,6 @@ const CAM = {
 function T(id, points) {
   return {
     video: `assets/teach/${id}.mp4`,
-    coachName: '梁老师',
-    coachRole: '北京大学排球课 · 动作讲解',
     points,
   };
 }
@@ -390,30 +403,31 @@ function setSkill(spec) {
     camera: CAM.set,
     teach: spec.teach,
     metrics: {
-      wristHigh: wristSet, handsGap, setElbow, knee: kneeLight, trunk: trunkUpright,
+      wristHigh: wristSet, handsGap, setElbow, knee: kneeLight, trunk: trunkUpright, headLean,
     },
     combined: null,
-    stdKeys: ['wristHigh', 'handsGap', 'setElbow', 'knee', 'trunk'],
+    stdKeys: ['wristHigh', 'handsGap', 'setElbow', 'knee', 'trunk', 'headLean'],
     groups: [{ title: '额前手型（触球窗口）', until: 'knee' }, { title: '下肢与躯干' }],
-    focusOrder: ['wristHigh', 'handsGap', 'setElbow', 'knee', 'trunk'],
+    focusOrder: ['wristHigh', 'handsGap', 'setElbow', 'headLean', 'knee', 'trunk'],
     weights: { hands: 0.45, lower: 0.25, trunk: 0.15, timing: 0.15 },
     reportMap: [
       { name: '手型', wKey: 'hands', keys: ['wristHigh', 'handsGap', 'setElbow'] },
       { name: '下肢', wKey: 'lower', keys: ['knee'] },
-      { name: '躯干', wKey: 'trunk', keys: ['trunk'] },
+      { name: '上体', wKey: 'trunk', keys: ['trunk', 'headLean'] },
       { name: '时机', wKey: 'timing', timing: true },
     ],
-    tableKeys: [['wristHigh', ''], ['handsGap', ''], ['setElbow', '°'], ['knee', '°'], ['trunk', '°']],
+    tableKeys: [['wristHigh', ''], ['handsGap', ''], ['setElbow', '°'], ['headLean', '°'], ['knee', '°'], ['trunk', '°']],
     chart: { kneeBand: [130, 165], series: [{ key: 'knee', color: '#00d4ff' }, { key: 'setElbow', color: '#a78bff' }] },
     phase: { ...PHASE_BASE, minVy: -0.4, minGap: spec.kind === 'self' ? 0.55 : 0.75, ballNear: 0.12 },
     idleHint: {
       wristHigh: '仅统计球体接近额前手型的触球窗口',
       handsGap: '仅统计触球窗口',
       setElbow: '仅统计触球窗口',
+      headLean: '仅统计触球窗口；建议以前斜或侧面机位拍摄',
     },
     metricLive(key, m, ph) {
       if (ph === 'standing' || ph === 'none') return false;
-      if (['wristHigh', 'handsGap', 'setElbow'].includes(key)) return ph === 'contact';
+      if (['wristHigh', 'handsGap', 'setElbow', 'headLean'].includes(key)) return ph === 'contact';
       return ph === 'contact' || ph === 'ready';
     },
     scoreSample(h) { return h.phase === 'contact'; },
@@ -433,13 +447,14 @@ function setSkill(spec) {
     timingText: spec.kind === 'self'
       ? '自传：蹬地伸膝的同时手指弹击，在额前上方完成拉—推，不要拍击球'
       : '抛–传：正对来球，球到额前约一球距离再伸送；下肢先蹬，再传到手上',
-    refs: ['R37', 'R38', 'R40', 'R42'],
+    refs: ['R37', 'R38', 'R40', 'R42', 'R43', 'R44'],
     standards: [
       { name: '手型高度', good: '额前上方约一球（15–20 cm）', warn: '略低或略高', bad: '明显偏离额前', note: '正面双手传球的击球点 [R37]' },
       { name: '两手间距', good: '靠拢成半球，拇指相对', warn: '略分开', bad: '明显分开 / 拇指朝前戳球', note: '正面机位更准' },
       { name: '传球肘角', good: '85° ~ 130°', warn: '70°~85° 或 130°~150°', bad: '< 70° 或 > 150°', note: '先屈肘缓冲，再伸送；熟练者存在肘→腕时序 [R40]' },
       { name: '膝关节夹角', good: '130° ~ 165°', warn: '120°~130° 或 165°~175°', bad: '< 120° 或 > 175°', note: '微屈膝，不要深蹲 [R42]' },
       { name: '躯干前倾角', good: '≤ 18°', warn: '18° ~ 28°', bad: '> 28°', note: '传球上体应较直，利于向上送球' },
+      { name: '头颈偏离竖直角', good: '≤ 25°', warn: '25° ~ 35°', bad: '> 35°', note: '正面传球研究在触球时的头部姿态约为偏离竖直 18°，且动作中头部变化约 2° [R43]。本项以鼻—肩中点相对躯干轴线作单目筛查；受机位影响，不等同于医学颈椎角度。高校教学资料将上体后仰列为常见错误 [R44]' },
       { name: '触球窗口', good: '球靠近额前双手时计分', warn: '未检出球则回退人体相位', bad: '无球比划手型不作为传球考试', note: spec.kind === 'self' ? '自传为基础练习' : '抛–传为考试内容：他人抛球后正面双手传出' },
     ],
   };
@@ -451,11 +466,11 @@ export const SKILLS = {
     kind: 'self',
     name: '自垫球',
     examName: '正面双手垫球 · 自垫球（基础练习）',
-    blurb: '基础练习：自己把球连续垫起，重点是击球平台稳定、节奏均匀。系统会看球是否在体前反复触臂。',
+    blurb: '连续自垫。触球时保持两臂伸直、平台稳定，并用下肢蹬伸控制出球高度。',
     teach: T('selfBump', [
       '两臂伸直夹紧，用前臂桡骨内侧平面垫球，不要打在手腕上。',
       '先半蹲，球到腹前再蹬地送髋、抬臂，用腿送球。',
-      '自己连续垫时保持平台朝向稳定，节奏均匀即可。',
+      '每次触球后迅速还原平台，尽量让球保持在身体正前方。',
     ]),
   }),
   tossBump: bumpSkill({
@@ -463,9 +478,9 @@ export const SKILLS = {
     kind: 'toss',
     name: '抛–垫球',
     examName: '正面双手垫球 · 抛–垫球（考试）',
-    blurb: '考试内容：他人抛球后接垫。准备半蹲，球由身外进入，至肩平面附近再插臂夹紧蹬送。',
+    blurb: '接抛球完成正面双手垫球。提前移动到位，在腹前形成稳定平台并将球送向目标区。',
     teach: T('tossBump', [
-      '这是考试项：等别人把球抛过来，不要做成自垫。',
+      '判断落点后先移动，保持身体正对来球。',
       '球落到肩平面附近再「插—夹—提」：提肩、顶肘、压腕、抬臂。',
       '半蹲迎球，两臂夹紧成一个平面，把球垫向目标区。',
     ]),
@@ -475,11 +490,11 @@ export const SKILLS = {
     kind: 'self',
     name: '自传球',
     examName: '正面双手传球 · 自传球（基础练习）',
-    blurb: '基础练习：自己连续正面双手传球，练额前手型与上下肢协调。',
+    blurb: '连续自传。球在额前上方进入手型，以蹬地、伸膝、伸肘和手指拨送连贯完成。',
     teach: T('selfSet', [
       '正面双手，手型在额前上方约一球距离，拇指相对成半球。',
       '先屈肘缓冲，再蹬地伸送，不要拍击球。',
-      '连续自传时上体保持较直，便于把球向上送。',
+      '身体移到球下，保持上体和头颈稳定，不要后仰追球。',
     ]),
   }),
   tossSet: setSkill({
@@ -487,11 +502,11 @@ export const SKILLS = {
     kind: 'toss',
     name: '抛–传球',
     examName: '正面双手传球 · 抛–传球（考试）',
-    blurb: '考试内容：他人抛球后，正面双手在额前上方约一球处传出。不是侧面传球。',
+    blurb: '接抛球完成正面双手传球。移动至来球下方，在额前上方完成缓冲与伸送。',
     teach: T('tossSet', [
-      '正对来球，球到额前约一球处再传，这是考试内容。',
+      '正对来球，判断落点后移动至球下，在额前上方触球。',
       '下肢先蹬，力量再传到手指，避免端着球推压。',
-      '不是侧面传球：身体和手型都要正对来球方向。',
+      '视线跟随来球，收住下颌和上体，避免仰头、后仰传球。',
     ]),
   }),
 
@@ -723,11 +738,11 @@ export const SKILL_GROUPS = [
     icon: '🤲',
     name: '垫球',
     examName: '正面双手垫球',
-    blurb: '上格自垫是基础练习，下格抛–垫才是考试接垫。',
+    blurb: '自垫用于巩固触球平台；抛–垫按课程考试方式完成接垫。',
     camera: CAM.bump.best,
     variants: [
-      { id: 'selfBump', tag: '基础练习', title: '自垫球', desc: '自己连续垫，练平台与节奏' },
-      { id: 'tossBump', tag: '考试内容', title: '抛–垫球', desc: '别人抛过来再接垫' },
+      { id: 'selfBump', tag: '基础练习', title: '自垫球', desc: '连续触球 · 平台稳定' },
+      { id: 'tossBump', tag: '考试内容', title: '抛–垫球', desc: '判断落点 · 垫向目标区' },
     ],
   },
   {
@@ -735,11 +750,11 @@ export const SKILL_GROUPS = [
     icon: '🖐️',
     name: '传球',
     examName: '正面双手传球',
-    blurb: '上格自传是基础练习，下格抛–传才是考试。均为正面双手，不是侧面传球。',
+    blurb: '自传用于熟悉额前手型；抛–传按课程考试方式完成正面双手传球。',
     camera: CAM.set.best,
     variants: [
-      { id: 'selfSet', tag: '基础练习', title: '自传球', desc: '自己连续正面双手传' },
-      { id: 'tossSet', tag: '考试内容', title: '抛–传球', desc: '别人抛过来再正面传出' },
+      { id: 'selfSet', tag: '基础练习', title: '自传球', desc: '额前触球 · 连贯伸送' },
+      { id: 'tossSet', tag: '考试内容', title: '抛–传球', desc: '移动到位 · 正面传出' },
     ],
   },
   {

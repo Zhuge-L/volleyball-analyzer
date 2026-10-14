@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VolleySense · 北京大学排球课程智能分析</title>
+  <title>VolleySense · 北京大学排球课程动作测评</title>
   <meta name="description" content="北京大学公共体育排球课程考试视频分析：正面双手垫球（自垫 / 抛–垫）、正面双手传球（自传 / 抛–传）、上手发球与正面下手发球、扣球。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏐</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -23,9 +23,9 @@
   <section class="login-screen" id="login-screen">
     <div class="login-card">
       <p class="login-crest">北京大学 · 公共体育</p>
-      <h1>排球课程智能分析</h1>
+      <h1>排球课程动作测评</h1>
       <p class="login-lead">
-        本程序专门为北京大学排球课程研发，用于课堂与课后的考试视频自评：对照垫球、传球、发球、扣球的技术要点，在触球或腾空窗口给出可执行的纠正建议。人体姿态与球体检测均在浏览器本地完成，视频不会上传到任何服务器。
+        用课堂或课后拍摄的视频，对照垫球、传球、发球和扣球的技术要求进行自评。程序只在触球或腾空等关键阶段记录动作，人体姿态与球体检测均在浏览器本地完成，视频不会上传到服务器。
       </p>
       <form id="login-form" class="login-form" autocomplete="on">
         <div class="field">
@@ -73,7 +73,7 @@
         <p class="eyebrow">PEKING UNIVERSITY · VOLLEYBALL</p>
         <h1>选择一项考试技术<br /><span class="grad-text">上传视频，对照标准自评</span></h1>
         <p class="lede">
-          面向北京大学排球课程的「教、学、练、评」闭环：垫球与传球均分为<strong>自练</strong>与<strong>考试（抛球后完成）</strong>；发球一格含上手与<strong>正面下手</strong>（不是侧面下手）。请按各项目给出的角度、距离、镜头离地高度拍摄。系统会尝试检测排球，并只在触球或腾空窗口评分。
+          垫球和传球分别提供基础练习与课程考试项目；发球包括上手发球和正面下手发球。请按项目页给出的机位、距离和镜头高度拍摄。程序会识别人体与排球，并在触球或腾空等关键阶段完成测评。
         </p>
       </div>
       <div class="skill-grid" id="skill-grid"></div>
@@ -107,22 +107,10 @@
           <div class="teach-layout">
             <div class="teach-video-col">
               <video id="teach-video" controls playsinline preload="metadata" hidden></video>
-              <div class="teach-placeholder" id="teach-placeholder">
-                <span class="teach-ph-icon">🎬</span>
-                <p><b>教学视频待上传</b></p>
-                <p>录好后放到 <code>assets/teach/</code>，文件名与项目一致即可在此播放。</p>
-              </div>
+              <div class="teach-placeholder" id="teach-placeholder" aria-label="示范视频加载中"></div>
             </div>
             <aside class="teach-coach">
-              <div class="coach-figure" aria-hidden="true">
-                <div class="coach-head"></div>
-                <div class="coach-torso"></div>
-                <div class="coach-whistle"></div>
-              </div>
-              <div class="coach-meta">
-                <strong id="coach-name">梁老师</strong>
-                <span id="coach-role">北京大学排球课 · 动作讲解</span>
-              </div>
+              <img class="coach-gif" src="assets/teach/coach.gif" alt="教师动作讲解" />
               <div class="coach-bubble" id="coach-bubble"></div>
             </aside>
           </div>
@@ -151,11 +139,6 @@
         </div>
       </div>
 
-      <div class="hero-visual teach-hero" aria-hidden="true">
-        <div class="orbit-tag tag-1">先看示范</div>
-        <div class="orbit-tag tag-2">再上传自评</div>
-        <div class="orbit-tag tag-3">填写身高换算 cm</div>
-      </div>
     </section>
 
     <!-- ============ 分析台 ============ -->
@@ -169,7 +152,7 @@
             </div>
             <div class="stage-loading" id="stage-loading" hidden>
               <div class="spinner"></div>
-              <p id="loading-text">正在加载 AI 模型…</p>
+              <p id="loading-text" class="sr-only">正在加载动作分析模型…</p>
             </div>
           </div>
           <div class="controls">

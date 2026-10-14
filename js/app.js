@@ -267,8 +267,6 @@ function bindTeach(sk) {
   const ph = $('#teach-placeholder');
   const bubble = $('#coach-bubble');
   if (!teach) return;
-  $('#coach-name').textContent = teach.coachName;
-  $('#coach-role').textContent = teach.coachRole;
   bubble.innerHTML = (teach.points || []).map((p) => `<p>${esc(p)}</p>`).join('');
   videoEl.pause();
   videoEl.removeAttribute('src');
@@ -730,6 +728,13 @@ function computeMetrics(lm) {
   if (visible(lm, [11, 12, 23, 24])) {
     m.trunk = trunkLean(mid(lm[11], lm[12]), mid(lm[23], lm[24]));
     m.conf.trunk = minVis(11, 12, 23, 24);
+  }
+
+  if (visible(lm, [0, 11, 12, 23, 24], 0.35)) {
+    const shoulder = mid(lm[11], lm[12]);
+    const hip = mid(lm[23], lm[24]);
+    m.headLean = Math.max(0, Math.round(180 - angleABC(lm[0], shoulder, hip)));
+    m.conf.headLean = minVis(0, 11, 12, 23, 24);
   }
 
   if (visible(lm, [23, 24, 27, 28])) {

@@ -23,6 +23,8 @@ export const REFS = {
   R38: { tag: 'R38', title: '正面双手上手传球教学：缓冲—发力约 0.025–0.03 s' },
   R40: { tag: 'R40', title: 'Ozawa et al. (2021). Biomechanical analysis of volleyball overhead pass. Sports Biomech 20(7):844–857' },
   R42: { tag: 'R42', title: 'Cabarkapa et al. (2022). Kinetic and Kinematic Characteristics of Setting Motions. Biomechanics 2(4):538–546', url: 'https://www.mdpi.com/2673-7078/2/4/42' },
+  R43: { tag: 'R43', title: 'Ridgway & Wilkerson. A Kinematic Analysis of the Front Set and Back Set in Volleyball', note: '7 名高水平大学女排二传：正面传球触球时头部相对水平 71.96°±10.75°，准备至出球头部活动范围约 2°', url: 'https://ojs.ub.uni-konstanz.de/cpa/article/view/1517/1422' },
+  R44: { tag: 'R44', title: '大学生体育与健康：排球正面双手传球技术', note: '将传球时上体后仰列为常见错误，并建议保持躯干稳定', url: 'https://mooc1.chaoxing.com/mooc-ans/nodedetailcontroller/visitnodedetail?courseId=244151298&knowledgeId=867108368' },
   C1: { tag: 'C1', title: 'AI Video-Based Analysis of the Volleyball Forearm Pass（后斜 4.3 m / 高 1.2 m）', url: 'https://www.mdpi.com/2673-4591/134/1/90' },
   C2: { tag: 'C2', title: 'Bari 2023 跳发机位：侧面 12–13 m、高 1.5 m、120 fps' },
   C6: { tag: 'C6', title: 'Oliosi et al. (2026). Smartphone camera positioning. JMIR mHealth uHealth. 斜向 1.8–2 m 检出率高' },
