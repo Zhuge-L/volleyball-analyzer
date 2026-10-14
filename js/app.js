@@ -299,12 +299,21 @@ function saveSession(rec) {
   try { localStorage.setItem(LS_SESSIONS, JSON.stringify(arr)); } catch { /* ignore */ }
 }
 
+/** 成绩按姓名与学号共同归属，避免同名学生之间串档。 */
+function belongsToCurrentStudent(rec) {
+  return !!rec
+    && !!student.name
+    && !!student.sid
+    && rec.name === student.name
+    && rec.sid === student.sid;
+}
+
 /** 当前学员某项目最近一次带完整报告快照的记录 */
-function latestReportFor(skillId, name = student.name) {
+function latestReportFor(skillId) {
   const aliases = { tossBump: ['tossBump', 'bump'], tossSet: ['tossSet', 'set'] };
   const ids = aliases[skillId] || [skillId];
   const list = loadSessions()
-    .filter((s) => s.name === name && ids.includes(s.skill) && s.report)
+    .filter((s) => belongsToCurrentStudent(s) && ids.includes(s.skill) && s.report)
     .sort((a, b) => (b.id || 0) - (a.id || 0));
   return list[0] || null;
 }
@@ -377,7 +386,7 @@ $('#btn-export-all-md')?.addEventListener('click', () => {
 });
 
 function renderHistory() {
-  const sessions = loadSessions().filter((s) => (!s.skill || s.skill === skill.id) && (!student.name || s.name === student.name));
+  const sessions = loadSessions().filter((s) => belongsToCurrentStudent(s) && (!s.skill || s.skill === skill.id));
   historyCard.hidden = sessions.length === 0;
   historyList.innerHTML = sessions.slice(-6).reverse().map((s) => {
     const d = new Date(s.date);
@@ -387,7 +396,10 @@ function renderHistory() {
   }).join('');
 }
 $('#btn-clear-history').addEventListener('click', () => {
-  try { localStorage.removeItem(LS_SESSIONS); } catch { /* ignore */ }
+  try {
+    const others = loadSessions().filter((s) => !belongsToCurrentStudent(s));
+    localStorage.setItem(LS_SESSIONS, JSON.stringify(others));
+  } catch { /* ignore */ }
   renderHistory();
   renderArchive();
 });
@@ -1391,7 +1403,7 @@ function buildReport() {
     renderArchive();
   }
 
-  const sessions = loadSessions().filter((s) => s.name === student.name && (!s.skill || s.skill === skill.id));
+  const sessions = loadSessions().filter((s) => belongsToCurrentStudent(s) && (!s.skill || s.skill === skill.id));
   const trend = sessions.slice(-5).map((s) => s.score);
 
   const row = (name, s, key, unit) => {
